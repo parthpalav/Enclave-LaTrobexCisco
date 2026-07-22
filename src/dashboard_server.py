@@ -7,7 +7,9 @@ from flask import Flask, render_template, Response, jsonify, request
 from multi_camera_manager import MultiCameraManager
 
 app = Flask(__name__, template_folder="templates")
-camera_manager = MultiCameraManager("config.yaml")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+config_path = os.path.join(BASE_DIR, "config.yaml")
+camera_manager = MultiCameraManager(config_path)
 
 def generate_camera_stream(camera_id: str):
     """

@@ -6,7 +6,7 @@ pipeline:
   log_stage_timings: true
 
 input:
-  source: "sample_crowd.mp4"
+  source: "data/sample_crowd.mp4"
 
 detection:
   model_name: "yolov8s.pt"

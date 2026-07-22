@@ -99,6 +99,7 @@ class MultiCameraManager:
     digital twin states, and risk alarms without superficial multipliers.
     """
     def __init__(self, config_path: str = "config.yaml"):
+        self.config_path = config_path
         self.base_config = load_config(config_path)
         self.workers: Dict[str, CameraWorker] = {}
         self.lock = threading.Lock()
@@ -108,7 +109,7 @@ class MultiCameraManager:
             if camera_id in self.workers:
                 return False
 
-            cam_config = load_config("config.yaml")
+            cam_config = load_config(self.config_path)
             cam_config.input_source = str(source)
             
             worker = CameraWorker(camera_id, name, source, cam_config)
