@@ -117,7 +117,8 @@ class CrowdFlowPipeline:
                     "track_id": t["track_id"],
                     "bbox": t["bbox"],
                     "center_xy": t["center_xy"],
-                    "velocity_xy": t.get("velocity_xy", [0.0, 0.0])
+                    "velocity_xy": t.get("velocity_xy", [0.0, 0.0]),
+                    "appearance": t.get("appearance", [])  # HSV fingerprint for cross-camera Re-ID
                 }
                 for t in tracks
             ],

@@ -30,6 +30,15 @@ import requests
 import socket
 import threading
 import sys
+import warnings
+
+# Suppress SSL warnings from self-signed server certificate (expected on LAN)
+try:
+    import urllib3
+    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+except ImportError:
+    pass
+warnings.filterwarnings('ignore', message='Unverified HTTPS request')
 
 # ──────────────────────────────────────────────
 # Helpers

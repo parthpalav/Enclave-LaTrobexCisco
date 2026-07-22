@@ -7,6 +7,69 @@ from typing import Dict, List, Any, Optional, Tuple
 from config import load_config, PipelineConfig
 from pipeline import CrowdFlowPipeline
 
+
+def cosine_similarity(a: List[float], b: List[float]) -> float:
+    """Cosine similarity between two L2-normalised vectors. Returns -1 to 1."""
+    if not a or not b or len(a) != len(b):
+        return 0.0
+    va, vb = np.array(a, dtype=np.float32), np.array(b, dtype=np.float32)
+    denom = (np.linalg.norm(va) * np.linalg.norm(vb))
+    if denom < 1e-8:
+        return 0.0
+    return float(np.dot(va, vb) / denom)
+
+
+def deduplicate_global_tracks(all_camera_tracks: List[Dict]) -> int:
+    """
+    Cross-camera deduplication using HSV appearance fingerprint cosine similarity.
+    Groups tracks from different cameras that likely represent the same physical person.
+
+    Logic:
+    - Collects all (camera_id, track) pairs
+    - Computes pairwise cosine similarity of appearance fingerprints between tracks
+      from DIFFERENT cameras
+    - If similarity >= REID_THRESHOLD, marks the pair as the same person (duplicate)
+    - Uses Union-Find to cluster duplicates
+    - Returns unique_count = total_tracks - number_of_duplicates_merged
+
+    REID_THRESHOLD = 0.90 (high threshold to avoid false merges)
+    """
+    REID_THRESHOLD = 0.90
+
+    if not all_camera_tracks:
+        return 0
+
+    n = len(all_camera_tracks)
+    # Union-Find
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    def union(x, y):
+        parent[find(x)] = find(y)
+
+    for i in range(n):
+        for j in range(i + 1, n):
+            cam_i = all_camera_tracks[i]["camera_id"]
+            cam_j = all_camera_tracks[j]["camera_id"]
+            # Only try to merge tracks from DIFFERENT cameras
+            if cam_i == cam_j:
+                continue
+            feat_i = all_camera_tracks[i].get("appearance", [])
+            feat_j = all_camera_tracks[j].get("appearance", [])
+            if not feat_i or not feat_j:
+                continue
+            sim = cosine_similarity(feat_i, feat_j)
+            if sim >= REID_THRESHOLD:
+                union(i, j)
+
+    unique_clusters = len(set(find(i) for i in range(n)))
+    return unique_clusters
+
 # ─────────────────────────────────────────────────────────────────
 # Spatial zone registry: maps camera_id → zone rect in digital twin
 # (x_offset, y_offset, width, height) as fractions of 0.0–1.0
@@ -217,13 +280,13 @@ class MultiCameraManager:
                 del self.workers[camera_id]
 
     def get_global_analytics(self) -> Dict[str, Any]:
-        total_headcount = 0
         max_risk = 0.0
         predicted_30s = 0
         predicted_60s = 0
         predicted_120s = 0
         all_avatars = []
         camera_summaries = []
+        all_tracks_global: List[Dict] = []   # for cross-camera Re-ID
 
         with self.lock:
             workers_snapshot = list(self.workers.items())
@@ -232,7 +295,6 @@ class MultiCameraManager:
             _, contract = worker.get_latest_data()
 
             hc = contract.get("headcount", 0) if contract else 0
-            total_headcount += hc
 
             c_risk = contract.get("risk_score_current", 0.0) if contract else 0.0
             max_risk = max(max_risk, c_risk)
@@ -244,15 +306,22 @@ class MultiCameraManager:
             predicted_60s += p_headcounts.get("60s", hc)
             predicted_120s += p_headcounts.get("120s", hc)
 
+            # Collect tracks with camera_id for global Re-ID deduplication
+            if contract:
+                for t in contract.get("tracks", []):
+                    all_tracks_global.append({
+                        "camera_id": cam_id,
+                        "track_id": t.get("track_id"),
+                        "appearance": t.get("appearance", []),
+                    })
+
             zone = worker.zone
             if contract:
                 dt_state = contract.get("digital_twin_state", {})
                 avatars = dt_state.get("avatars", [])
                 for av in avatars:
-                    # Map avatar coords into the camera's zone in the global floor plan
                     av["camera_id"] = cam_id
                     av["zone"] = zone
-                    # Transform avatar local position (0-1) into global twin canvas position
                     av["twin_x"] = zone["x"] + av.get("x", 0.5) * zone["w"]
                     av["twin_y"] = zone["y"] + av.get("y", 0.5) * zone["h"]
                     all_avatars.append(av)
@@ -266,14 +335,20 @@ class MultiCameraManager:
                 "zone": zone
             })
 
+        # Cross-camera Re-ID: deduplicate people visible in multiple cameras
+        if len(workers_snapshot) > 1 and all_tracks_global:
+            unique_headcount = deduplicate_global_tracks(all_tracks_global)
+        else:
+            unique_headcount = sum(c.get("headcount", 0) for c in camera_summaries)
+
         alerts = []
         if max_risk > 0.60:
             alerts.append({"level": "CRITICAL", "message": f"High stampede risk detected (Risk Score: {max_risk:.2f})!"})
-        if predicted_120s > total_headcount + 5 and total_headcount > 0:
+        if predicted_120s > unique_headcount + 5 and unique_headcount > 0:
             alerts.append({"level": "WARNING", "message": f"Inflow increase predicted in 120s (~{predicted_120s} people expected)!"})
 
         return {
-            "global_headcount": total_headcount,
+            "global_headcount": unique_headcount,
             "global_max_risk": round(max_risk, 2),
             "predicted_headcounts": {
                 "30s": predicted_30s,
@@ -286,6 +361,7 @@ class MultiCameraManager:
             "alerts": alerts,
             "camera_zones": CAMERA_ZONES
         }
+
 
     def stop_all(self):
         with self.lock:

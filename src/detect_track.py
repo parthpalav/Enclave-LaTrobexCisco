@@ -1,9 +1,38 @@
 import time
 import numpy as np
 import torch
+import cv2
 from typing import List, Dict, Any, Tuple
 from ultralytics import YOLO
 from config import DetectionConfig
+
+
+def compute_appearance_fingerprint(frame: np.ndarray, x1: float, y1: float, x2: float, y2: float) -> List[float]:
+    """
+    Computes a compact 24-bin HSV color histogram over the upper-body region of a detected person.
+    Used for cross-camera appearance-based Re-ID to deduplicate headcounts.
+    Returns a 24-element L2-normalised float list, or empty list if region is invalid.
+    """
+    h, w = frame.shape[:2]
+    px1, py1 = max(0, int(x1)), max(0, int(y1))
+    px2, py2 = min(w, int(x2)), min(h, int(y2))
+    if px2 <= px1 or py2 <= py1:
+        return []
+    # Focus on upper 60% of bbox (torso/head - more discriminative, less affected by occlusion)
+    upper_y2 = py1 + max(1, int((py2 - py1) * 0.60))
+    crop = frame[py1:upper_y2, px1:px2]
+    if crop.size == 0:
+        return []
+    hsv = cv2.cvtColor(crop, cv2.COLOR_BGR2HSV)
+    # 8-bin H, 8-bin S, 8-bin V = 24 bins total
+    hist_h = cv2.calcHist([hsv], [0], None, [8], [0, 180]).flatten()
+    hist_s = cv2.calcHist([hsv], [1], None, [8], [0, 256]).flatten()
+    hist_v = cv2.calcHist([hsv], [2], None, [8], [0, 256]).flatten()
+    feat = np.concatenate([hist_h, hist_s, hist_v]).astype(np.float32)
+    norm = np.linalg.norm(feat)
+    if norm > 1e-5:
+        feat = feat / norm
+    return feat.tolist()
 
 class PersonTracker:
     """
@@ -92,12 +121,16 @@ class PersonTracker:
                     if len(self.track_history[track_id]) > 15:
                         self.track_history[track_id].pop(0)
 
+                    # Compute appearance fingerprint for cross-camera Re-ID
+                    appearance = compute_appearance_fingerprint(frame, x1, y1, x2, y2)
+
                     tracks.append({
                         "track_id": track_id,
                         "bbox": [round(float(x1), 1), round(float(y1), 1), round(float(w), 1), round(float(h), 1)],
                         "center_xy": [round(center_x, 1), round(center_y, 1)],
                         "velocity_xy": [round(vx, 2), round(vy, 2)],
-                        "confidence": round(conf, 3)
+                        "confidence": round(conf, 3),
+                        "appearance": appearance   # 24-bin HSV fingerprint for Re-ID
                     })
 
         self.last_tracks = tracks
