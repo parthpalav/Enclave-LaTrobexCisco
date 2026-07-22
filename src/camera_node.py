@@ -86,7 +86,8 @@ class FrameSender(threading.Thread):
                         self.server_url,
                         files={"frame": ("frame.jpg", frame_bytes, "image/jpeg")},
                         data={"camera_id": self.cam_id},
-                        timeout=5.0
+                        timeout=5.0,
+                        verify=False
                     )
                     self._consecutive_errors = 0
                 except Exception:
@@ -176,7 +177,7 @@ def main():
 
     # Verify server reachable
     try:
-        r = requests.get(args.server.rstrip("/") + "/api/analytics", timeout=5)
+        r = requests.get(args.server.rstrip("/") + "/api/analytics", timeout=5, verify=False)
         print(f"[CameraNode] ✓ Server reachable ({r.status_code})")
     except Exception as e:
         print(f"[CameraNode] ✗ Cannot reach server: {e}")
