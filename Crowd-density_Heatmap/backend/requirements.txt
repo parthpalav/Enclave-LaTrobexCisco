@@ -1,0 +1,28 @@
+# ---- Web framework ----
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+python-multipart==0.0.20
+websockets==14.1
+
+# ---- AI / CV ----
+ultralytics==8.3.55
+# Install a CUDA build of torch separately for GPU (see docs/Deployment.md).
+torch==2.5.1
+torchvision==0.20.1
+opencv-python-headless==4.10.0.84
+# numpy pinned <2.0 because Ultralytics requires numpy<2.0.0 on macOS (darwin).
+numpy==1.26.4
+scipy==1.14.1
+
+# ---- Database / cache ----
+sqlalchemy[asyncio]==2.0.36
+asyncpg==0.30.0
+redis==5.2.1
+alembic==1.14.0
+
+# ---- Tooling / tests ----
+pytest==8.3.4
+pytest-asyncio==0.25.0
+httpx==0.28.1

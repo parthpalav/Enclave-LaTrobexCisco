@@ -1,0 +1,40 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+.venv-test/
+venv/
+env/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# ---- Env / secrets ----
+.env
+backend/.env
+frontend/.env
+*.local
+
+# ---- Models / weights (downloaded on first run) ----
+*.pt
+!**/tests/**/*.pt
+
+# ---- Node / frontend ----
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# ---- Data / media (never commit raw footage) ----
+*.mp4
+*.avi
+*.mkv
+data/
+recordings/
+
+# ---- OS / editor ----
+.DS_Store
+.idea/
+.vscode/
+*.log

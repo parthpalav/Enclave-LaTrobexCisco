@@ -1,0 +1,17 @@
+**/__pycache__/
+**/*.pyc
+**/.venv/
+**/.venv-test/
+**/.pytest_cache/
+**/.ruff_cache/
+**/node_modules/
+frontend/dist/
+.git/
+.github/
+docs/
+*.md
+**/.env
+*.mp4
+*.avi
+*.pt
+.DS_Store
