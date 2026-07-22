@@ -190,7 +190,8 @@ class DebugVisualizer:
         fps: float,
         timings: Dict[str, float],
         digital_twin_engine: Optional[DigitalTwinEngine] = None,
-        track_velocities: Optional[Dict[int, Tuple[float, float]]] = None
+        track_velocities: Optional[Dict[int, Tuple[float, float]]] = None,
+        camera_id: str = ""
     ) -> np.ndarray:
         output = frame.copy()
 
@@ -213,7 +214,8 @@ class DebugVisualizer:
             tracks=tracks,
             track_velocities=track_velocities,
             divergence_map=divergence_map,
-            digital_twin_engine=digital_twin_engine
+            digital_twin_engine=digital_twin_engine,
+            camera_id=camera_id
         )
 
         return output
@@ -226,7 +228,8 @@ class DebugVisualizer:
         tracks: List[Dict[str, Any]],
         track_velocities: Optional[Dict[int, Tuple[float, float]]],
         divergence_map: np.ndarray,
-        digital_twin_engine: Optional[DigitalTwinEngine]
+        digital_twin_engine: Optional[DigitalTwinEngine],
+        camera_id: str = ""
     ) -> np.ndarray:
         """
         Appends Digital Twin Overhead Radar View panel & Future Horizon Prediction heatmaps.
@@ -242,7 +245,8 @@ class DebugVisualizer:
                 track_velocities=track_velocities or {},
                 divergence_map=divergence_map,
                 predicted_risk=predicted_risk,
-                frame_shape=(H, W)
+                frame_shape=(H, W),
+                camera_id=camera_id
             )
             twin_resized = cv2.resize(twin_canvas, (240, H))
             side_panels.append(twin_resized)

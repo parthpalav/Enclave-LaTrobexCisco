@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "slots": {
+    "cam_1": {
+      "slot": "A",
+      "label": "Camera A",
+      "x": 0.0,
+      "y": 0.0,
+      "w": 0.5,
+      "h": 0.5
+    },
+    "phone_android": {
+      "slot": "B",
+      "label": "Camera B",
+      "x": 0.5,
+      "y": 0.0,
+      "w": 0.5,
+      "h": 0.5
+    }
+  }
+}

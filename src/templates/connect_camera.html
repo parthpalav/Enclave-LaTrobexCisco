@@ -117,7 +117,13 @@
 
         async function startCamera() {
             try {
-                mediaStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                mediaStream = await navigator.mediaDevices.getUserMedia({
+                    video: {
+                        width: { ideal: 640 },
+                        height: { ideal: 480 },
+                        frameRate: { ideal: 8, max: 10 }
+                    }
+                });
                 video.srcObject = mediaStream;
                 await video.play();
                 return true;
@@ -160,29 +166,41 @@
                     })
                 });
 
-                // Stream frames over HTTP POST (15 FPS)
-                streamInterval = setInterval(sendFrame, 65);
+                // Stream frames over HTTP POST without overlapping uploads.
+                streamInterval = setInterval(sendFrame, 125);
             }
         }
 
+        let uploadInFlight = false;
         function sendFrame() {
             if (!isStreaming || !video.videoWidth) return;
+            if (uploadInFlight) return;
 
             canvas.width = 640;
             canvas.height = 480;
             ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+            uploadInFlight = true;
 
-            canvas.toBlob(blob => {
-                if (!blob) return;
+            canvas.toBlob(async blob => {
+                if (!blob) {
+                    uploadInFlight = false;
+                    return;
+                }
                 const formData = new FormData();
                 formData.append('frame', blob, 'frame.jpg');
                 formData.append('camera_id', cameraId);
 
-                fetch('/api/stream_upload', {
-                    method: 'POST',
-                    body: formData
-                }).catch(err => console.error("Upload error:", err));
-            }, 'image/jpeg', 0.75);
+                try {
+                    await fetch('/api/stream_upload', {
+                        method: 'POST',
+                        body: formData
+                    });
+                } catch (err) {
+                    console.error("Upload error:", err);
+                } finally {
+                    uploadInFlight = false;
+                }
+            }, 'image/jpeg', 0.6);
         }
     </script>
 </body>

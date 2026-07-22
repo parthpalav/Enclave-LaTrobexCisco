@@ -3,6 +3,7 @@ import time
 import cv2
 import argparse
 import numpy as np
+import re
 from flask import Flask, render_template, Response, jsonify, request
 from multi_camera_manager import MultiCameraManager
 
@@ -18,9 +19,9 @@ def generate_camera_stream(camera_id: str):
     while True:
         if camera_id in camera_manager.workers:
             worker = camera_manager.workers[camera_id]
-            frame, _ = worker.get_latest_data()
+            frame = worker.get_stream_frame()
             if frame is not None:
-                ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
                 if ret:
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\n'
@@ -48,7 +49,12 @@ def stream_upload():
     if 'frame' not in request.files:
         return jsonify({"error": "no frame"}), 400
 
-    camera_id = request.form.get('camera_id', 'laptop_2')
+    camera_id = request.form.get('camera_id', 'laptop_2').strip()
+    device_name = request.form.get('device_name', '').strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", camera_id):
+        return jsonify({"error": "camera_id must contain only letters, numbers, _ or -"}), 400
+    if device_name and not re.fullmatch(r"[A-Za-z0-9 _()\-]{1,80}", device_name):
+        return jsonify({"error": "device_name contains unsupported characters"}), 400
     file = request.files['frame']
     img_bytes = file.read()
 
@@ -57,7 +63,13 @@ def stream_upload():
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if frame is not None:
-        camera_manager.push_laptop_frame(camera_id, frame)
+        h, w = frame.shape[:2]
+        if w > 720:
+            scale = 720.0 / float(w)
+            frame = cv2.resize(frame, (720, max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
+        accepted = camera_manager.push_laptop_frame(camera_id, frame, name=device_name or None)
+        if not accepted:
+            return jsonify({"error": "maximum of four CCTV devices reached", "camera_id": camera_id}), 409
         return jsonify({"success": True, "camera_id": camera_id}), 200
 
     return jsonify({"error": "invalid image"}), 400
@@ -66,6 +78,13 @@ def stream_upload():
 def get_analytics():
     data = camera_manager.get_global_analytics()
     return jsonify(data)
+
+@app.route('/api/alarm_event')
+def get_alarm_event():
+    data = camera_manager.get_global_analytics()
+    if data.get("stampede_event") == "STAMPEDE_A":
+        return Response("STAMPEDE_A", mimetype="text/plain")
+    return Response("", status=204, mimetype="text/plain")
 
 @app.route('/api/heartbeat', methods=['POST'])
 def heartbeat():

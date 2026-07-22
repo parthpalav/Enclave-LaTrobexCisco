@@ -107,7 +107,7 @@
 </head>
 <body>
   <h1>📡 CrowdFlow Phone Node</h1>
-  <p class="subtitle">Stream your phone camera to the Central Dashboard</p>
+  <p class="subtitle">This phone becomes one CCTV node in the live coverage twin.</p>
 
   <input id="camId" type="text" placeholder="Camera ID (e.g. phone_main)" value="" />
 
@@ -139,16 +139,20 @@
     const statFramesEl = document.getElementById('statFrames');
     const statErrEl    = document.getElementById('statErr');
 
-    // Auto-set a reasonable default cam ID from device info
-    camIdEl.value = 'phone_' + (navigator.userAgent.match(/iPhone|iPad/i) ? 'ios' : 'android') + '_' + Date.now().toString(36);
+    // Keep the same identity when this phone reconnects, so it returns to its CCTV slot.
+    const savedCameraId = localStorage.getItem('crowdflow_camera_id');
+    const generatedCameraId = 'phone_' + (navigator.userAgent.match(/iPhone|iPad/i) ? 'ios' : 'android') + '_' + Math.random().toString(36).slice(2, 8);
+    camIdEl.value = savedCameraId || generatedCameraId;
 
     let stream = null;
     let sendLoop = null;
     let facingMode = 'environment';  // rear camera by default
     let frameCount = 0, errCount = 0;
     let fpsCounter = 0, lastFpsTime = Date.now();
-    const TARGET_FPS  = 12;
-    const QUALITY     = 0.65;   // JPEG quality 0-1
+    const TARGET_FPS  = 6;
+    const QUALITY     = 0.55;   // JPEG quality 0-1
+    const MAX_WIDTH   = 720;
+    let uploadInFlight = false;
 
     function setStatus(msg, cls='') {
       statusEl.innerHTML = `<span class="${cls}">${msg}</span>`;
@@ -157,7 +161,12 @@
     async function openCamera() {
       if (stream) stream.getTracks().forEach(t => t.stop());
       const constraints = {
-        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          facingMode,
+          width: { ideal: 720 },
+          height: { ideal: 480 },
+          frameRate: { ideal: TARGET_FPS, max: 10 }
+        },
         audio: false
       };
       stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -167,16 +176,25 @@
 
     async function sendFrame() {
       if (!stream) return;
-      canvas.width  = video.videoWidth  || 640;
-      canvas.height = video.videoHeight || 480;
-      ctx.drawImage(video, 0, 0);
+      if (uploadInFlight) return;
+      const srcW = video.videoWidth || 640;
+      const srcH = video.videoHeight || 480;
+      const scale = Math.min(1, MAX_WIDTH / srcW);
+      canvas.width  = Math.round(srcW * scale);
+      canvas.height = Math.round(srcH * scale);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      uploadInFlight = true;
 
       canvas.toBlob(async (blob) => {
-        if (!blob) return;
+        if (!blob) {
+          uploadInFlight = false;
+          return;
+        }
         const camId = camIdEl.value.trim() || 'phone_1';
         const fd = new FormData();
         fd.append('frame', blob, 'frame.jpg');
         fd.append('camera_id', camId);
+        fd.append('device_name', `Phone CCTV (${camId})`);
 
         try {
           const resp = await fetch('/api/stream_upload', { method: 'POST', body: fd });
@@ -200,6 +218,7 @@
           fpsCounter = 0;
           lastFpsTime = now;
         }
+        uploadInFlight = false;
       }, 'image/jpeg', QUALITY);
     }
 
@@ -207,6 +226,7 @@
       try {
         setStatus('Opening camera...', 'warn');
         await openCamera();
+        localStorage.setItem('crowdflow_camera_id', camIdEl.value.trim() || generatedCameraId);
         setStatus('<span class="ok">✓ Camera open. Starting stream...</span>');
 
         const interval = Math.round(1000 / TARGET_FPS);
