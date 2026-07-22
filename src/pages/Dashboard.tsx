@@ -12,6 +12,7 @@ import { QRCodePanel } from '../components/QRCodePanel';
 import { BillboardPanel } from '../components/BillboardPanel';
 import { ConnectedDevicesPanel } from '../components/ConnectedDevicesPanel';
 import { speakEmergency, stopEmergencySpeech } from '../utils/speech';
+import { AlertTriangle } from 'lucide-react';
 
 export const Dashboard: React.FC = () => {
   const {
@@ -22,28 +23,37 @@ export const Dashboard: React.FC = () => {
     venueCapacity,
     crowdStatus,
     isEmergency,
+    emergencyPayload,
     raiseSOS,
-    raiseEarthquake,
     clearSOS,
   } = useSocket();
 
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isDisasterMenuOpen, setIsDisasterMenuOpen] = useState<boolean>(false);
   const [isEEWOverlayOpen, setIsEEWOverlayOpen] = useState<boolean>(false);
+  const [autoTriggerInfo, setAutoTriggerInfo] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Handle Emergency Voice Announcement on Admin Panel ONLY
   useEffect(() => {
     if (isEmergency) {
-      speakEmergency();
+      const isEarthquake = emergencyPayload?.disasterType === 'EARTHQUAKE' || emergencyPayload?.title?.toLowerCase().includes('earthquake');
+      if (isEarthquake) {
+        speakEmergency(
+          'Attention. Earthquake detected. Evacuate immediately to open ground. Remain calm and follow emergency instructions.'
+        );
+      } else {
+        speakEmergency();
+      }
     } else {
       stopEmergencySpeech();
+      setAutoTriggerInfo(null);
     }
 
     return () => {
       stopEmergencySpeech();
     };
-  }, [isEmergency]);
+  }, [isEmergency, emergencyPayload]);
 
   // Toast Helper
   const addToast = useCallback((type: 'success' | 'error', message: string) => {
@@ -55,6 +65,30 @@ export const Dashboard: React.FC = () => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
+  // Single Reusable triggerSOS Function (used by both Manual Raise SOS & Automatic Earthquake Detection)
+  const triggerSOS = useCallback(
+    (disasterType: string = 'OVERCROWDING', lat: number | null = null, lon: number | null = null, autoReason?: string) => {
+      const success = raiseSOS({
+        disasterType,
+        latitude: lat,
+        longitude: lon,
+      });
+
+      if (success) {
+        if (autoReason) {
+          setAutoTriggerInfo(`Automatic SOS Triggered • Reason: ${autoReason}`);
+          addToast('success', `Automatic SOS Triggered: ${autoReason}`);
+        } else {
+          addToast('success', 'Emergency Alert Broadcasted');
+        }
+      } else {
+        addToast('error', 'Unable to reach server.');
+      }
+    },
+    [raiseSOS, addToast]
+  );
+
+  // Subscribe to SEISMOS EEW_FLAG_E from the Earthquake simulation iframe
   useEffect(() => {
     const handleMessage = (event: MessageEvent) => {
       const payload = event.data;
@@ -62,11 +96,21 @@ export const Dashboard: React.FC = () => {
         return;
       }
 
-      const success = raiseEarthquake();
-      if (success) {
-        addToast('success', 'Earthquake Early Warning broadcasted to devices');
-      } else {
-        addToast('error', 'Unable to reach server.');
+      if (payload.value === true) {
+        // Automatically trigger SOS with EARTHQUAKE disaster payload
+        if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+          navigator.geolocation.getCurrentPosition(
+            (pos) => {
+              triggerSOS('EARTHQUAKE', pos.coords.latitude, pos.coords.longitude, 'Earthquake Detection');
+            },
+            () => {
+              triggerSOS('EARTHQUAKE', null, null, 'Earthquake Detection');
+            },
+            { timeout: 3000 }
+          );
+        } else {
+          triggerSOS('EARTHQUAKE', null, null, 'Earthquake Detection');
+        }
       }
     };
 
@@ -75,9 +119,9 @@ export const Dashboard: React.FC = () => {
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [addToast, raiseEarthquake]);
+  }, [triggerSOS]);
 
-  // Handle "Raise SOS" button click
+  // Handle "Raise SOS" button click (Manual Flow)
   const handleRaiseSOSClick = () => {
     if (!isConnected) {
       addToast('error', 'Unable to reach server.');
@@ -86,37 +130,22 @@ export const Dashboard: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  // Handle modal confirmation (requests GPS coordinates if available, falls back to null gracefully)
+  // Handle manual modal confirmation
   const handleConfirmSOS = () => {
     setIsModalOpen(false);
-
-    const dispatchSOS = (lat: number | null = null, lon: number | null = null) => {
-      const success = raiseSOS({
-        disasterType: 'OVERCROWDING',
-        latitude: lat,
-        longitude: lon,
-      });
-
-      if (success) {
-        addToast('success', 'Emergency Alert Broadcasted');
-      } else {
-        addToast('error', 'Unable to reach server.');
-      }
-    };
 
     if (typeof window !== 'undefined' && 'geolocation' in navigator) {
       navigator.geolocation.getCurrentPosition(
         (pos) => {
-          dispatchSOS(pos.coords.latitude, pos.coords.longitude);
+          triggerSOS('OVERCROWDING', pos.coords.latitude, pos.coords.longitude);
         },
         () => {
-          // If permission is denied or timeout, send SOS with null coordinates
-          dispatchSOS(null, null);
+          triggerSOS('OVERCROWDING', null, null);
         },
         { timeout: 4000, maximumAge: 0 }
       );
     } else {
-      dispatchSOS(null, null);
+      triggerSOS('OVERCROWDING', null, null);
     }
   };
 
@@ -140,6 +169,7 @@ export const Dashboard: React.FC = () => {
   const handleClearSOSClick = () => {
     const success = clearSOS();
     if (success) {
+      setAutoTriggerInfo(null);
       addToast('success', 'Emergency Alert Cleared');
     } else {
       addToast('error', 'Unable to reach server.');
@@ -170,6 +200,14 @@ export const Dashboard: React.FC = () => {
         isConnected={isConnected}
         onDisasterDetectionClick={() => setIsDisasterMenuOpen(true)}
       />
+
+      {/* Automatic SOS Trigger Informational Banner */}
+      {autoTriggerInfo && isEmergency && (
+        <div className="bg-amber-950/90 border-b border-amber-500/40 px-6 py-2 flex items-center space-x-2 text-xs font-mono text-amber-200 animate-pulse shrink-0">
+          <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+          <span className="font-bold">{autoTriggerInfo}</span>
+        </div>
+      )}
 
       {/* 2. Control Action Toolbar */}
       <ControlButtons
@@ -205,6 +243,7 @@ export const Dashboard: React.FC = () => {
         crowdStatus={crowdStatus}
       />
 
+      {/* SEISMOS EEW Simulation Overlay */}
       {isEEWOverlayOpen && (
         <div className="fixed inset-0 z-[70] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-6xl h-[92vh] bg-slate-900 border border-cyan-500/30 rounded-3xl overflow-hidden shadow-2xl shadow-cyan-950/40 flex flex-col">

@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
-import { Monitor, AlertOctagon, Radio, ShieldAlert, Sparkles, ShoppingBag, Trees, TrainTrack, MapPin, Clock } from 'lucide-react';
+import { Monitor, AlertOctagon, Radio, ShieldAlert, Sparkles, ShoppingBag, Trees, TrainTrack, MapPin, Clock, Activity } from 'lucide-react';
 import { reverseGeocode } from '../services/reverseGeocoding';
 
 interface Ad {
@@ -107,6 +107,10 @@ export const BillboardDisplay: React.FC = () => {
     ? new Date(emergencyPayload.timestamp).toLocaleTimeString()
     : new Date().toLocaleTimeString();
 
+  const isEarthquake = emergencyPayload?.disasterType === 'EARTHQUAKE' || emergencyPayload?.title?.toLowerCase().includes('earthquake');
+  const bannerHeader = isEarthquake ? '🚨 EARTHQUAKE WARNING 🚨' : '🚨 PUBLIC SAFETY ALERT 🚨';
+  const emergencyHeading = isEarthquake ? 'Earthquake detected. Evacuate to open ground immediately.' : 'OVERCROWDING DETECTED / EVACUATE IMMEDIATELY';
+
   return (
     <div className="h-screen w-screen bg-slate-950 text-slate-100 flex flex-col justify-between p-6 overflow-hidden select-none font-sans relative">
       {/* Background LED Mesh Pattern */}
@@ -149,14 +153,22 @@ export const BillboardDisplay: React.FC = () => {
           <div className="flex items-center space-x-3 bg-red-900/90 border border-red-500/60 px-6 py-3 rounded-2xl shadow-2xl">
             <ShieldAlert className="w-9 h-9 text-red-100 animate-bounce shrink-0" />
             <h2 className="text-2xl font-black tracking-widest text-white uppercase">
-              🚨 PUBLIC SAFETY ALERT 🚨
+              {bannerHeader}
             </h2>
           </div>
 
           <div className="space-y-3 max-w-3xl">
             <div className="w-20 h-20 mx-auto rounded-full bg-red-900/80 border-2 border-red-400 flex items-center justify-center shadow-2xl">
-              <AlertOctagon className="w-12 h-12 text-red-100 animate-ping" />
+              {isEarthquake ? (
+                <Activity className="w-12 h-12 text-amber-200 animate-ping" />
+              ) : (
+                <AlertOctagon className="w-12 h-12 text-red-100 animate-ping" />
+              )}
             </div>
+
+            <h3 className="text-3xl font-black text-amber-200 tracking-tight uppercase leading-tight">
+              {emergencyHeading}
+            </h3>
 
             {/* Geographic Location Display Section */}
             <div className="bg-red-900/70 border border-red-500/60 p-4 rounded-2xl max-w-xl mx-auto space-y-1 shadow-inner">
@@ -175,7 +187,7 @@ export const BillboardDisplay: React.FC = () => {
             </div>
 
             <p className="text-lg font-bold text-red-100 max-w-xl mx-auto leading-relaxed">
-              AVOID ENTERING THIS AREA. PLEASE USE ALTERNATE ROUTES. EMERGENCY SERVICES ARE RESPONDING.
+              AVOID ENTERING THE AFFECTED AREA. EMERGENCY SERVICES ARE RESPONDING.
             </p>
           </div>
 

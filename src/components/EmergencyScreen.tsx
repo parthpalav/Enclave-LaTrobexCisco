@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { AlertOctagon, Flame, Navigation, Cross, Loader2, AlertCircle } from 'lucide-react';
+import { AlertOctagon, Flame, Navigation, Cross, Loader2, AlertCircle, Activity } from 'lucide-react';
 import type { EmergencyPayload } from '../hooks/useSocket';
 import { useHospitalNavigation } from '../hooks/useHospitalNavigation';
 
@@ -68,14 +68,14 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
     ? new Date(payload.timestamp).toLocaleTimeString()
     : new Date().toLocaleTimeString();
 
-  const isEarthquake = payload?.title?.toLowerCase().includes('earthquake');
-  const bannerTitle = isEarthquake ? '🚨 EARTHQUAKE ALERT' : '🚨 EMERGENCY ALERT';
-  const headline = isEarthquake ? 'Strong Ground Motion Detected' : 'Overcrowding Detected';
-  const bodyCopy = payload?.message || (isEarthquake
-    ? 'Drop, cover, and hold on. Move away from glass, shelves, and unstable structures. Follow emergency guidance immediately.'
-    : 'Please evacuate calmly. Proceed to the nearest exit.');
+  const isEarthquake = payload?.disasterType === 'EARTHQUAKE' || payload?.title?.toLowerCase().includes('earthquake');
+  const bannerTitle = isEarthquake ? '🚨 EARTHQUAKE DETECTED' : '🚨 EMERGENCY ALERT';
+  const headline = isEarthquake ? 'Evacuate immediately to open ground.' : 'Overcrowding Detected';
+  const bodyCopy = isEarthquake
+    ? 'Remain calm.'
+    : (payload?.message || 'Please evacuate calmly. Proceed to the nearest exit.');
   const detailCopy = isEarthquake
-    ? 'Avoid elevators, stay clear of windows, and move to the nearest open safe area.'
+    ? 'Avoid buildings, trees, bridges and power lines.'
     : 'Follow instructions from emergency personnel.';
 
   return (
@@ -91,7 +91,11 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
       {/* Center Evacuation Message */}
       <main className="flex-1 flex flex-col items-center justify-center text-center px-3 my-auto py-4 space-y-4">
         <div className="w-16 h-16 rounded-full bg-red-900/80 border-2 border-red-400 flex items-center justify-center shadow-2xl shadow-red-900 shrink-0">
-          <Flame className="w-9 h-9 text-red-200 animate-ping" />
+          {isEarthquake ? (
+            <Activity className="w-9 h-9 text-amber-200 animate-ping" />
+          ) : (
+            <Flame className="w-9 h-9 text-red-200 animate-ping" />
+          )}
         </div>
 
         <div className="space-y-1.5">
@@ -112,7 +116,9 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
             Do not run. Do not push.
           </p>
           <p className="text-[11px] text-red-200">
-            Keep clear of designated emergency corridors.
+            {isEarthquake
+              ? 'Follow instructions from emergency responders.'
+              : 'Keep clear of designated emergency corridors.'}
           </p>
         </div>
 
