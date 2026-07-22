@@ -35,18 +35,24 @@ function initSocketHandler(io) {
     socket.emit('crowd-status', current.status);
 
     // Listen for SOS Broadcast trigger from Admin Dashboard
-    socket.on('raise-sos', () => {
+    socket.on('raise-sos', (data = {}) => {
       logger.alert('Emergency Broadcast Initiated', 'SOS event received from Admin Dashboard');
 
       const sosPayload = {
         title: 'Emergency',
         message: 'Overcrowding detected. Proceed calmly to the nearest exit.',
-        timestamp: new Date().toISOString(),
+        disasterType: data?.disasterType || 'OVERCROWDING',
+        latitude: typeof data?.latitude === 'number' ? data.latitude : null,
+        longitude: typeof data?.longitude === 'number' ? data.longitude : null,
+        timestamp: data?.timestamp || new Date().toISOString(),
       };
 
-      // Broadcast emergency alert to all connected devices
+      // Broadcast emergency alert payload with coordinates to all connected devices
       io.emit('sos-alert', sosPayload);
-      logger.success('SOS Broadcast Sent', `Payload sent to ${connectedDevices} devices`);
+      logger.success(
+        'SOS Broadcast Sent',
+        `Payload sent to ${connectedDevices} devices (Lat: ${sosPayload.latitude}, Lon: ${sosPayload.longitude})`
+      );
     });
 
     // Listen for Clear SOS trigger from Admin Dashboard

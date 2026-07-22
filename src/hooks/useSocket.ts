@@ -12,7 +12,16 @@ export interface DeviceInfo {
 export interface EmergencyPayload {
   title: string;
   message: string;
+  disasterType?: string;
+  latitude?: number | null;
+  longitude?: number | null;
   timestamp: string;
+}
+
+export interface RaiseSOSOptions {
+  disasterType?: string;
+  latitude?: number | null;
+  longitude?: number | null;
 }
 
 export interface UseSocketReturn {
@@ -24,7 +33,7 @@ export interface UseSocketReturn {
   venueCapacity: number;
   isEmergency: boolean;
   emergencyPayload: EmergencyPayload | null;
-  raiseSOS: () => boolean;
+  raiseSOS: (options?: RaiseSOSOptions) => boolean;
   clearSOS: () => boolean;
 }
 
@@ -105,6 +114,9 @@ export function useSocket(): UseSocketReturn {
       setEmergencyPayload(payload || {
         title: 'Emergency',
         message: 'Overcrowding detected. Proceed calmly to the nearest exit.',
+        disasterType: 'OVERCROWDING',
+        latitude: null,
+        longitude: null,
         timestamp: new Date().toISOString(),
       });
     });
@@ -120,9 +132,14 @@ export function useSocket(): UseSocketReturn {
     };
   }, []);
 
-  const raiseSOS = useCallback((): boolean => {
+  const raiseSOS = useCallback((options?: RaiseSOSOptions): boolean => {
     if (socketRef.current && socketRef.current.connected) {
-      socketRef.current.emit('raise-sos');
+      socketRef.current.emit('raise-sos', {
+        disasterType: options?.disasterType || 'OVERCROWDING',
+        latitude: typeof options?.latitude === 'number' ? options.latitude : null,
+        longitude: typeof options?.longitude === 'number' ? options.longitude : null,
+        timestamp: new Date().toISOString(),
+      });
       return true;
     }
     return false;

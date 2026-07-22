@@ -9,6 +9,7 @@ import { DisasterDetectionModal } from '../components/DisasterDetectionModal';
 import { Toast } from '../components/Toast';
 import type { ToastMessage } from '../components/Toast';
 import { QRCodePanel } from '../components/QRCodePanel';
+import { BillboardPanel } from '../components/BillboardPanel';
 import { ConnectedDevicesPanel } from '../components/ConnectedDevicesPanel';
 
 export const Dashboard: React.FC = () => {
@@ -47,15 +48,37 @@ export const Dashboard: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  // Handle modal confirmation
+  // Handle modal confirmation (requests GPS coordinates if available, falls back to null gracefully)
   const handleConfirmSOS = () => {
     setIsModalOpen(false);
-    const success = raiseSOS();
 
-    if (success) {
-      addToast('success', 'Emergency Alert Broadcasted');
+    const dispatchSOS = (lat: number | null = null, lon: number | null = null) => {
+      const success = raiseSOS({
+        disasterType: 'OVERCROWDING',
+        latitude: lat,
+        longitude: lon,
+      });
+
+      if (success) {
+        addToast('success', 'Emergency Alert Broadcasted');
+      } else {
+        addToast('error', 'Unable to reach server.');
+      }
+    };
+
+    if (typeof window !== 'undefined' && 'geolocation' in navigator) {
+      navigator.geolocation.getCurrentPosition(
+        (pos) => {
+          dispatchSOS(pos.coords.latitude, pos.coords.longitude);
+        },
+        () => {
+          // If permission is denied or timeout, send SOS with null coordinates
+          dispatchSOS(null, null);
+        },
+        { timeout: 4000, maximumAge: 0 }
+      );
     } else {
-      addToast('error', 'Unable to reach server.');
+      dispatchSOS(null, null);
     }
   };
 
@@ -104,16 +127,17 @@ export const Dashboard: React.FC = () => {
         isEmergencyActive={isEmergency}
       />
 
-      {/* 3. Central Viewport (Heatmap + Join QR Panel + Connected Devices Panel) */}
+      {/* 3. Central Viewport (Heatmap + Join QR Panel + Digital Billboard Link + Connected Devices Panel) */}
       <div className="flex-1 p-4 md:p-6 grid grid-cols-1 lg:grid-cols-4 gap-4 min-h-0 bg-slate-950">
         {/* Heatmap Viewport (Occupies 3 out of 4 columns on large screens) */}
         <div className="lg:col-span-3 flex flex-col min-h-0">
           <HeatmapPlaceholder />
         </div>
 
-        {/* Right Side Control Cards: Join Event QR Code + Connected Attendee Devices */}
+        {/* Right Side Control Cards: Join Event QR Code + Digital Billboard Link + Connected Attendee Devices */}
         <div className="flex flex-col gap-4 min-h-0 overflow-y-auto">
           <QRCodePanel />
+          <BillboardPanel />
           <ConnectedDevicesPanel
             devicesList={devicesList}
             connectedDevices={connectedDevices}
