@@ -67,6 +67,20 @@ def get_analytics():
     data = camera_manager.get_global_analytics()
     return jsonify(data)
 
+@app.route('/api/heartbeat', methods=['POST'])
+def heartbeat():
+    """Lightweight endpoint: camera nodes ping this every 5s to confirm they are alive."""
+    data = request.get_json() or {}
+    cam_id = data.get("camera_id", "unknown")
+    if cam_id in camera_manager.workers:
+        camera_manager.workers[cam_id].last_heartbeat = time.time()
+    return jsonify({"ok": True}), 200
+
+@app.route('/phone')
+def phone_capture():
+    """Browser-based camera capture page — open on phone browser over LAN."""
+    return render_template('phone_capture.html')
+
 @app.route('/api/add_camera', methods=['POST'])
 def add_camera():
     req = request.get_json() or {}

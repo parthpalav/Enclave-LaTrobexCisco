@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <title>CrowdFlow — Connect Phone Camera</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #0a0f1e;
+      color: #e0e8ff;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+    h1 {
+      font-size: 1.4rem;
+      font-weight: 700;
+      background: linear-gradient(135deg, #00e5ff, #7c4dff);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+      text-align: center;
+    }
+    .subtitle { font-size: 0.8rem; color: #8899bb; margin-bottom: 20px; text-align: center; }
+
+    #camId {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      border: 1px solid #2a3560;
+      background: #12193a;
+      color: #e0e8ff;
+      font-size: 0.9rem;
+      margin-bottom: 12px;
+    }
+
+    video {
+      width: 100%;
+      max-width: 420px;
+      border-radius: 14px;
+      border: 2px solid #1e2d5e;
+      margin-bottom: 16px;
+      background: #000;
+    }
+    canvas { display: none; }
+
+    .btn {
+      width: 100%;
+      max-width: 420px;
+      padding: 14px;
+      border-radius: 12px;
+      border: none;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 10px;
+    }
+    #startBtn  { background: linear-gradient(135deg, #00e5ff, #7c4dff); color: #000; }
+    #startBtn:hover  { opacity: 0.9; transform: scale(1.02); }
+    #stopBtn   { background: #1e2d5e; color: #8899bb; display: none; }
+    #stopBtn:hover   { background: #e53935; color: #fff; }
+
+    #flipBtn {
+      width: 100%;
+      max-width: 420px;
+      padding: 10px;
+      border-radius: 10px;
+      border: 1px solid #2a3560;
+      background: #12193a;
+      color: #8899bb;
+      font-size: 0.85rem;
+      cursor: pointer;
+      margin-bottom: 18px;
+    }
+
+    #status {
+      font-size: 0.82rem;
+      color: #8899bb;
+      text-align: center;
+      min-height: 40px;
+    }
+    #status .ok   { color: #00e676; }
+    #status .warn { color: #ffab00; }
+    #status .err  { color: #ef5350; }
+
+    .stats {
+      display: flex;
+      gap: 12px;
+      margin-top: 14px;
+      font-size: 0.78rem;
+      color: #6677aa;
+    }
+    .stat-box {
+      background: #12193a;
+      border-radius: 8px;
+      padding: 8px 12px;
+      text-align: center;
+      flex: 1;
+    }
+    .stat-val { font-size: 1.1rem; font-weight: 700; color: #00e5ff; }
+  </style>
+</head>
+<body>
+  <h1>📡 CrowdFlow Phone Node</h1>
+  <p class="subtitle">Stream your phone camera to the Central Dashboard</p>
+
+  <input id="camId" type="text" placeholder="Camera ID (e.g. phone_main)" value="" />
+
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+
+  <button class="btn" id="startBtn">▶ Start Streaming</button>
+  <button class="btn" id="stopBtn">■ Stop Streaming</button>
+  <button id="flipBtn">🔄 Switch Front / Rear Camera</button>
+
+  <div id="status">Tap <strong>Start Streaming</strong> to begin.</div>
+
+  <div class="stats">
+    <div class="stat-box"><div class="stat-val" id="statFps">0</div>FPS sent</div>
+    <div class="stat-box"><div class="stat-val" id="statFrames">0</div>Frames</div>
+    <div class="stat-box"><div class="stat-val" id="statErr">0</div>Errors</div>
+  </div>
+
+  <script>
+    const video   = document.getElementById('video');
+    const canvas  = document.getElementById('canvas');
+    const ctx     = canvas.getContext('2d');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn  = document.getElementById('stopBtn');
+    const flipBtn  = document.getElementById('flipBtn');
+    const statusEl = document.getElementById('status');
+    const camIdEl  = document.getElementById('camId');
+    const statFpsEl    = document.getElementById('statFps');
+    const statFramesEl = document.getElementById('statFrames');
+    const statErrEl    = document.getElementById('statErr');
+
+    // Auto-set a reasonable default cam ID from device info
+    camIdEl.value = 'phone_' + (navigator.userAgent.match(/iPhone|iPad/i) ? 'ios' : 'android') + '_' + Date.now().toString(36);
+
+    let stream = null;
+    let sendLoop = null;
+    let facingMode = 'environment';  // rear camera by default
+    let frameCount = 0, errCount = 0;
+    let fpsCounter = 0, lastFpsTime = Date.now();
+    const TARGET_FPS  = 12;
+    const QUALITY     = 0.65;   // JPEG quality 0-1
+
+    function setStatus(msg, cls='') {
+      statusEl.innerHTML = `<span class="${cls}">${msg}</span>`;
+    }
+
+    async function openCamera() {
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      const constraints = {
+        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      };
+      stream = await navigator.mediaDevices.getUserMedia(constraints);
+      video.srcObject = stream;
+      await video.play();
+    }
+
+    async function sendFrame() {
+      if (!stream) return;
+      canvas.width  = video.videoWidth  || 640;
+      canvas.height = video.videoHeight || 480;
+      ctx.drawImage(video, 0, 0);
+
+      canvas.toBlob(async (blob) => {
+        if (!blob) return;
+        const camId = camIdEl.value.trim() || 'phone_1';
+        const fd = new FormData();
+        fd.append('frame', blob, 'frame.jpg');
+        fd.append('camera_id', camId);
+
+        try {
+          const resp = await fetch('/api/stream_upload', { method: 'POST', body: fd });
+          if (resp.ok) {
+            frameCount++;
+            statFramesEl.textContent = frameCount;
+          } else {
+            errCount++;
+            statErrEl.textContent = errCount;
+          }
+        } catch (e) {
+          errCount++;
+          statErrEl.textContent = errCount;
+        }
+
+        // FPS update
+        fpsCounter++;
+        const now = Date.now();
+        if (now - lastFpsTime >= 1000) {
+          statFpsEl.textContent = fpsCounter;
+          fpsCounter = 0;
+          lastFpsTime = now;
+        }
+      }, 'image/jpeg', QUALITY);
+    }
+
+    startBtn.addEventListener('click', async () => {
+      try {
+        setStatus('Opening camera...', 'warn');
+        await openCamera();
+        setStatus('<span class="ok">✓ Camera open. Starting stream...</span>');
+
+        const interval = Math.round(1000 / TARGET_FPS);
+        sendLoop = setInterval(sendFrame, interval);
+
+        startBtn.style.display = 'none';
+        stopBtn.style.display  = 'block';
+        camIdEl.disabled = true;
+        setStatus('<span class="ok">✓ Streaming live to Central Dashboard</span>');
+      } catch (e) {
+        setStatus(`<span class="err">✗ Camera error: ${e.message}<br>Try opening this page in Chrome or Safari.</span>`);
+      }
+    });
+
+    stopBtn.addEventListener('click', () => {
+      clearInterval(sendLoop);
+      sendLoop = null;
+      if (stream) stream.getTracks().forEach(t => t.stop());
+      stream = null;
+      startBtn.style.display = 'block';
+      stopBtn.style.display  = 'none';
+      camIdEl.disabled = false;
+      setStatus('Streaming stopped.');
+    });
+
+    flipBtn.addEventListener('click', async () => {
+      facingMode = facingMode === 'environment' ? 'user' : 'environment';
+      if (stream) {
+        try { await openCamera(); } catch(e) {}
+      }
+    });
+  </script>
+</body>
+</html>
