@@ -23,11 +23,13 @@ export const Dashboard: React.FC = () => {
     crowdStatus,
     isEmergency,
     raiseSOS,
+    raiseEarthquake,
     clearSOS,
   } = useSocket();
 
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isDisasterMenuOpen, setIsDisasterMenuOpen] = useState<boolean>(false);
+  const [isEEWOverlayOpen, setIsEEWOverlayOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Handle Emergency Voice Announcement on Admin Panel ONLY
@@ -52,6 +54,28 @@ export const Dashboard: React.FC = () => {
   const handleDismissToast = useCallback((id: string) => {
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      const payload = event.data;
+      if (payload?.type !== 'EEW_FLAG_E') {
+        return;
+      }
+
+      const success = raiseEarthquake();
+      if (success) {
+        addToast('success', 'Earthquake Early Warning broadcasted to devices');
+      } else {
+        addToast('error', 'Unable to reach server.');
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [addToast, raiseEarthquake]);
 
   // Handle "Raise SOS" button click
   const handleRaiseSOSClick = () => {
@@ -96,6 +120,18 @@ export const Dashboard: React.FC = () => {
     }
   };
 
+  const handleEarthquakeTrigger = () => {
+    setIsDisasterMenuOpen(false);
+
+    if (!isConnected) {
+      addToast('error', 'Unable to reach server.');
+      return;
+    }
+
+    setIsEEWOverlayOpen(true);
+    addToast('success', 'Earthquake simulation started');
+  };
+
   const handleCancelSOS = () => {
     setIsModalOpen(false);
   };
@@ -126,6 +162,7 @@ export const Dashboard: React.FC = () => {
       <DisasterDetectionModal
         isOpen={isDisasterMenuOpen}
         onClose={() => setIsDisasterMenuOpen(false)}
+        onEarthquakeTrigger={handleEarthquakeTrigger}
       />
 
       {/* 1. Dashboard Header */}
@@ -167,6 +204,32 @@ export const Dashboard: React.FC = () => {
         venueCapacity={venueCapacity}
         crowdStatus={crowdStatus}
       />
+
+      {isEEWOverlayOpen && (
+        <div className="fixed inset-0 z-[70] bg-slate-950/90 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-6xl h-[92vh] bg-slate-900 border border-cyan-500/30 rounded-3xl overflow-hidden shadow-2xl shadow-cyan-950/40 flex flex-col">
+            <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700 bg-slate-950/80">
+              <div>
+                <p className="text-[10px] uppercase tracking-[0.3em] text-cyan-300">Earthquake Early Warning</p>
+                <h3 className="text-lg font-bold text-white">SEISMOS Live Simulation</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsEEWOverlayOpen(false)}
+                className="rounded-xl border border-slate-700 bg-slate-800 px-3 py-2 text-sm font-semibold text-slate-200 hover:bg-slate-700"
+              >
+                Close
+              </button>
+            </div>
+
+            <iframe
+              src="/eew.html"
+              title="Earthquake Early Warning Simulation"
+              className="w-full h-full border-0 bg-slate-950"
+            />
+          </div>
+        </div>
+      )}
     </div>
   );
 };

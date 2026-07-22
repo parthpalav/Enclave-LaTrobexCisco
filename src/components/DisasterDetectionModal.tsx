@@ -4,11 +4,13 @@ import { Activity, Waves, X, AlertTriangle } from 'lucide-react';
 interface DisasterDetectionModalProps {
   isOpen: boolean;
   onClose: () => void;
+  onEarthquakeTrigger: () => void;
 }
 
 export const DisasterDetectionModal: React.FC<DisasterDetectionModalProps> = ({
   isOpen,
   onClose,
+  onEarthquakeTrigger,
 }) => {
   // Listen for Escape key press to dismiss modal
   useEffect(() => {
@@ -72,9 +74,11 @@ export const DisasterDetectionModal: React.FC<DisasterDetectionModalProps> = ({
         {/* Two Large Horizontal Cards: Earthquake & Flood */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 my-2">
           {/* Left Card: Earthquake */}
-          <div
-            className="group relative bg-gradient-to-br from-amber-950/90 via-amber-900/60 to-orange-950/90 border border-amber-500/40 hover:border-amber-400/80 rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-xl shadow-amber-950/30 hover:scale-[1.02] transition-all duration-200 cursor-pointer select-none"
-            aria-label="Earthquake Disaster Detection (Placeholder)"
+          <button
+            type="button"
+            onClick={onEarthquakeTrigger}
+            className="group relative bg-gradient-to-br from-amber-950/90 via-amber-900/60 to-orange-950/90 border border-amber-500/40 hover:border-amber-400/80 rounded-2xl p-6 flex flex-col items-center justify-center text-center shadow-xl shadow-amber-950/30 hover:scale-[1.02] transition-all duration-200 cursor-pointer select-none w-full"
+            aria-label="Trigger Earthquake Early Warning Alert"
           >
             <div className="w-16 h-16 rounded-2xl bg-amber-900/60 border border-amber-500/40 flex items-center justify-center text-amber-300 mb-4 group-hover:scale-110 transition-transform duration-200 shadow-inner">
               <Activity className="w-8 h-8 animate-pulse" />
@@ -91,9 +95,9 @@ export const DisasterDetectionModal: React.FC<DisasterDetectionModalProps> = ({
             </div>
 
             <div className="mt-4 px-3 py-1 bg-amber-950/80 border border-amber-500/30 rounded-lg text-[10px] font-mono text-amber-300 uppercase tracking-widest">
-              Sensor Module Standby
+              Trigger EEW Module
             </div>
-          </div>
+          </button>
 
           {/* Right Card: Flood */}
           <div

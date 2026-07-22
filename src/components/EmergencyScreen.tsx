@@ -68,13 +68,23 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
     ? new Date(payload.timestamp).toLocaleTimeString()
     : new Date().toLocaleTimeString();
 
+  const isEarthquake = payload?.title?.toLowerCase().includes('earthquake');
+  const bannerTitle = isEarthquake ? '🚨 EARTHQUAKE ALERT' : '🚨 EMERGENCY ALERT';
+  const headline = isEarthquake ? 'Strong Ground Motion Detected' : 'Overcrowding Detected';
+  const bodyCopy = payload?.message || (isEarthquake
+    ? 'Drop, cover, and hold on. Move away from glass, shelves, and unstable structures. Follow emergency guidance immediately.'
+    : 'Please evacuate calmly. Proceed to the nearest exit.');
+  const detailCopy = isEarthquake
+    ? 'Avoid elevators, stay clear of windows, and move to the nearest open safe area.'
+    : 'Follow instructions from emergency personnel.';
+
   return (
     <div className="h-screen w-screen bg-red-950 text-white flex flex-col justify-between p-5 overflow-y-auto select-none font-sans border-4 border-red-600 animate-pulse">
       {/* Top Warning Banner */}
       <div className="flex items-center justify-center space-x-3 bg-red-900/90 border border-red-500/60 px-4 py-3 rounded-2xl shadow-2xl shrink-0">
         <AlertOctagon className="w-7 h-7 text-red-100 animate-bounce shrink-0" />
         <h1 className="text-xl font-black tracking-wider text-white uppercase">
-          🚨 EMERGENCY ALERT
+          {bannerTitle}
         </h1>
       </div>
 
@@ -86,13 +96,13 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
 
         <div className="space-y-1.5">
           <h2 className="text-2xl font-black tracking-tight text-red-100 leading-tight">
-            Overcrowding Detected
+            {headline}
           </h2>
           <p className="text-base font-bold text-white max-w-sm leading-snug">
-            Please evacuate calmly. Proceed to the nearest exit.
+            {bodyCopy}
           </p>
           <p className="text-xs text-red-200 font-medium max-w-xs">
-            Follow instructions from emergency personnel.
+            {detailCopy}
           </p>
         </div>
 

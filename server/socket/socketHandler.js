@@ -55,6 +55,20 @@ function initSocketHandler(io) {
       );
     });
 
+    // Listen for Earthquake EEW trigger from Admin Dashboard
+    socket.on('raise-earthquake', () => {
+      logger.alert('Earthquake EEW Broadcast Initiated', 'Earthquake event received from Admin Dashboard');
+
+      const earthquakePayload = {
+        title: 'Earthquake Warning',
+        message: 'Drop, cover, and hold on. Move away from glass, shelves, and unstable structures. Follow emergency guidance immediately.',
+        timestamp: new Date().toISOString(),
+      };
+
+      io.emit('sos-alert', earthquakePayload);
+      logger.success('Earthquake Broadcast Sent', `Payload sent to ${connectedDevices} devices`);
+    });
+
     // Listen for Clear SOS trigger from Admin Dashboard
     socket.on('clear-sos', () => {
       logger.info('Clear Emergency Alert', 'Clear SOS event received from Admin Dashboard');

@@ -34,6 +34,7 @@ export interface UseSocketReturn {
   isEmergency: boolean;
   emergencyPayload: EmergencyPayload | null;
   raiseSOS: (options?: RaiseSOSOptions) => boolean;
+  raiseEarthquake: () => boolean;
   clearSOS: () => boolean;
 }
 
@@ -145,6 +146,14 @@ export function useSocket(): UseSocketReturn {
     return false;
   }, []);
 
+  const raiseEarthquake = useCallback((): boolean => {
+    if (socketRef.current && socketRef.current.connected) {
+      socketRef.current.emit('raise-earthquake');
+      return true;
+    }
+    return false;
+  }, []);
+
   const clearSOS = useCallback((): boolean => {
     if (socketRef.current && socketRef.current.connected) {
       socketRef.current.emit('clear-sos');
@@ -163,6 +172,7 @@ export function useSocket(): UseSocketReturn {
     isEmergency,
     emergencyPayload,
     raiseSOS,
+    raiseEarthquake,
     clearSOS,
   };
 }

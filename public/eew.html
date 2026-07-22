@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>SEISMOS — Earthquake Early Warning Simulation</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#0A0E13;
+    --panel:#10161D;
+    --panel-2:#141B23;
+    --border:#232C36;
+    --text:#E7EDF3;
+    --muted:#7C8B99;
+    --cyan:#33C6D9;
+    --green:#2ECC71;
+    --yellow:#F5C518;
+    --orange:#FF8A3D;
+    --red:#FF3B4E;
+    --risk-color: var(--green);
+    --risk-glow: rgba(46,204,113,0.12);
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;height:100%;background:var(--bg);color:var(--text);
+    font-family:'Inter',system-ui,sans-serif;overflow:hidden;}
+  ::-webkit-scrollbar{width:8px;height:8px;}
+  ::-webkit-scrollbar-thumb{background:#26313c;border-radius:4px;}
+
+  .mono{font-family:'IBM Plex Mono',monospace;}
+  .display{font-family:'Space Grotesk',sans-serif;}
+
+  .dashboard{
+    display:grid;
+    grid-template-columns: 70% 30%;
+    height:100vh;
+    width:100vw;
+    min-height:0;
+    transition:background 0.6s ease;
+  }
+  .glow-wash{
+    position:fixed; inset:0; pointer-events:none; z-index:0;
+    background: radial-gradient(1200px 500px at 15% 0%, var(--risk-glow), transparent 60%);
+    transition: background 0.8s ease;
+  }
+
+  /* ---------- LEFT PANEL ---------- */
+  .left-panel{
+    position:relative; z-index:1;
+    display:flex; flex-direction:column;
+    height:100%; min-height:0; min-width:0;
+    padding:10px 16px 8px 16px;
+    border-right:1px solid var(--border);
+    overflow:hidden;
+  }
+  .left-header{
+    flex:0 0 auto;
+    display:flex; align-items:center; justify-content:space-between;
+    padding-bottom:6px; margin-bottom:4px; border-bottom:1px solid var(--border);
+    flex-wrap:wrap; gap:6px;
+  }
+  .title-block{display:flex; align-items:center; gap:8px;}
+  .logo-mark{
+    width:26px;height:26px;border-radius:7px;
+    background:linear-gradient(135deg, var(--cyan), #1a7a86);
+    display:flex;align-items:center;justify-content:center;
+    font-family:'Space Grotesk',sans-serif; font-weight:700; font-size:12px; color:#04181b;
+    flex-shrink:0;
+  }
+  .title-text h1{font-size:13.5px;margin:0;letter-spacing:0.4px;font-weight:600;}
+  .title-text p{margin:0;font-size:9.5px;color:var(--muted);letter-spacing:0.3px;}
+  .header-right{display:flex; align-items:center; gap:8px; flex-wrap:wrap;}
+  .phase-pill{
+    padding:4px 10px; border-radius:16px; font-size:10.5px; font-weight:600;
+    letter-spacing:0.5px; border:1px solid; display:flex; align-items:center; gap:6px;
+    color:var(--risk-color); border-color:var(--risk-color);
+    background:color-mix(in srgb, var(--risk-color) 12%, transparent);
+    transition:all 0.5s ease; white-space:nowrap;
+  }
+  .phase-dot{width:7px;height:7px;border-radius:50%;background:var(--risk-color);
+    box-shadow:0 0 8px var(--risk-color); flex-shrink:0;}
+  .disclaimer{font-size:8.5px;color:var(--muted); letter-spacing:0.2px; border:1px dashed #32404c;
+    padding:3px 6px; border-radius:5px; white-space:nowrap;}
+
+  .flag-e-pill{
+    padding:4px 10px; border-radius:16px; font-size:10.5px; font-weight:600;
+    letter-spacing:0.5px; border:1px solid #3a4652; display:flex; align-items:center; gap:6px;
+    color:var(--muted); white-space:nowrap; transition:all 0.3s ease;
+    font-family:'IBM Plex Mono',monospace;
+  }
+  .flag-e-pill.armed{ color:#FFC24B; border-color:#FFC24B; background:rgba(255,194,75,0.12); }
+  .flag-e-dot{width:7px;height:7px;border-radius:50%;background:#48545f; flex-shrink:0; transition:all 0.3s ease;}
+  .flag-e-pill.armed .flag-e-dot{background:#FFC24B; box-shadow:0 0 8px #FFC24B; animation:flagPulse 1s ease-in-out infinite;}
+  @keyframes flagPulse{ 0%,100%{opacity:1;} 50%{opacity:0.35;} }
+
+  .countdown-strip{
+    flex:0 0 auto;
+    display:flex; align-items:center; gap:6px; padding:4px 0 6px 0;
+    flex-wrap:wrap;
+  }
+  .metric-chip{
+    display:flex; flex-direction:column; gap:1px; padding:2px 10px;
+    border-left:2px solid var(--border); flex:1; min-width:0;
+  }
+  .metric-chip .k{font-size:8.5px; color:var(--muted); letter-spacing:0.5px; text-transform:uppercase; white-space:nowrap;}
+  .metric-chip .v{font-size:14px; font-weight:600;}
+  .metric-chip.accent .v{color:var(--risk-color);}
+
+  .charts{
+    flex:1 1 auto; display:flex; flex-direction:column; gap:4px; min-height:0;
+  }
+  .chart-block{
+    flex:1 1 0; display:flex; flex-direction:column; min-height:0;
+    background:var(--panel); border:1px solid var(--border); border-radius:7px;
+    padding:3px 10px 2px 10px;
+  }
+  .chart-label-row{
+    flex:0 0 auto;
+    display:flex; justify-content:space-between; align-items:baseline; margin-bottom:0;
+  }
+  .chart-label-row .name{font-size:9.5px; color:var(--muted); letter-spacing:0.4px; text-transform:uppercase;}
+  .chart-label-row .val{font-size:11.5px; font-weight:600;}
+  .chart-canvas-wrap{flex:1 1 auto; min-height:0; position:relative;}
+  canvas{width:100%; height:100%; display:block;}
+
+  /* ---------- RIGHT PANEL ---------- */
+  .right-panel{
+    position:relative; z-index:1;
+    display:flex; flex-direction:column;
+    height:100%; min-width:0; min-height:0;
+    overflow:hidden;
+  }
+  .top-right{
+    flex:0 0 40%;
+    display:flex; flex-direction:column;
+    padding:10px 16px; border-bottom:1px solid var(--border);
+    min-height:0; overflow:hidden;
+  }
+  .section-title{flex:0 0 auto; font-size:9.5px; color:var(--muted); letter-spacing:0.8px; text-transform:uppercase;
+    margin:0 0 4px 0; font-weight:600;}
+  .sensor-grid{flex:1 1 auto; display:flex; flex-direction:column; gap:0; min-height:0;}
+  .sensor-row{
+    flex:1 1 0; min-height:0;
+    display:flex; justify-content:space-between; align-items:center;
+    padding:0 2px; border-bottom:1px solid #1a222b;
+  }
+  .sensor-row:last-child{border-bottom:none;}
+  .sensor-row .label{font-size:10.5px; color:var(--muted);}
+  .sensor-row .value{font-size:12px; font-weight:600; white-space:nowrap;}
+  .sensor-status-dot{width:6px;height:6px;border-radius:50%;background:var(--green);
+    display:inline-block; margin-right:5px; box-shadow:0 0 6px var(--green);}
+
+  .bottom-right{
+    flex:1 1 auto; display:flex; flex-direction:column;
+    padding:10px 16px 10px 16px; min-height:0; overflow:hidden;
+  }
+  .emergency-banner{
+    flex:0 0 auto;
+    border-radius:9px; padding:7px 12px; margin-bottom:6px;
+    border:1px solid var(--risk-color); background:color-mix(in srgb, var(--risk-color) 10%, var(--panel));
+    transition:all 0.5s ease;
+  }
+  .emergency-banner .k{font-size:8.5px; letter-spacing:0.8px; color:var(--muted); text-transform:uppercase;}
+  .emergency-banner .state{font-family:'Space Grotesk',sans-serif; font-size:14px; font-weight:700; margin-top:2px;
+    color:var(--risk-color); transition:color 0.5s ease;}
+
+  .cards-grid{
+    flex:1 1 auto; min-height:0;
+    display:grid; grid-template-columns:1fr 1fr; grid-template-rows:repeat(4,1fr); gap:6px;
+  }
+  .card{
+    min-height:0; min-width:0;
+    display:flex; flex-direction:column; justify-content:center;
+    background:var(--panel); border:1px solid var(--border); border-radius:8px; padding:5px 10px;
+  }
+  .card .title{font-size:9px; color:var(--muted); letter-spacing:0.4px; text-transform:uppercase; margin-bottom:2px;}
+  .card .value{font-size:12.5px; font-weight:600; margin-bottom:3px;}
+  .badge{
+    display:inline-flex; align-items:center; gap:4px; font-size:10px; font-weight:600;
+    padding:2px 7px; border-radius:11px; letter-spacing:0.2px; white-space:nowrap;
+  }
+  .badge.negligible{color:var(--green); background:rgba(46,204,113,0.14);}
+  .badge.marginal{color:var(--yellow); background:rgba(245,197,24,0.14);}
+  .badge.severe{color:var(--orange); background:rgba(255,138,61,0.14);}
+  .badge.catastrophic{color:var(--red); background:rgba(255,59,78,0.16);}
+
+  @keyframes pulseRed{
+    0%,100%{ box-shadow:0 0 0 rgba(255,59,78,0.0);}
+    50%{ box-shadow:0 0 22px rgba(255,59,78,0.55);}
+  }
+  .pulsing{animation:pulseRed 1s ease-in-out infinite;}
+
+  @media (max-width: 980px){
+    .dashboard{grid-template-columns:1fr; grid-template-rows:58vh 42vh;}
+    .left-panel{border-right:none; border-bottom:1px solid var(--border);}
+    .cards-grid{grid-template-columns:1fr 1fr;}
+    .title-text p{display:none;}
+    .disclaimer{display:none;}
+  }
+</style>
+</head>
+<body>
+
+<div class="glow-wash" id="glowWash"></div>
+
+<div class="dashboard">
+  <!-- ============ LEFT PANEL ============ -->
+  <div class="left-panel">
+    <div class="left-header">
+      <div class="title-block">
+        <div class="logo-mark display">S</div>
+        <div class="title-text">
+          <h1>SEISMOS — Earthquake Early Warning</h1>
+          <p>Simulation Engine · Deterministic Waveform Model</p>
+        </div>
+      </div>
+      <div class="header-right">
+        <div class="disclaimer">SIMULATED DEMO — NOT LIVE SEISMIC DATA</div>
+        <div class="flag-e-pill" id="flagEPill"><span class="flag-e-dot" id="flagEDot"></span>FLAG E: <span id="flagEState">OFF</span></div>
+        <div class="phase-pill" id="phasePill"><span class="phase-dot" id="phaseDot"></span><span id="phaseLabel">NORMAL</span></div>
+      </div>
+    </div>
+
+    <div class="countdown-strip">
+      <div class="metric-chip accent">
+        <div class="k">Est. Magnitude</div>
+        <div class="v mono" id="chipMagnitude">--</div>
+      </div>
+      <div class="metric-chip">
+        <div class="k">Epicenter Dist.</div>
+        <div class="v mono" id="chipEpicenter">--</div>
+      </div>
+      <div class="metric-chip accent">
+        <div class="k">Strong Shaking In</div>
+        <div class="v mono" id="chipCountdown">--</div>
+      </div>
+      <div class="metric-chip">
+        <div class="k">Sim. Time</div>
+        <div class="v mono" id="chipSimTime">00:00</div>
+      </div>
+    </div>
+
+    <div class="charts">
+      <div class="chart-block">
+        <div class="chart-label-row"><span class="name">P-Wave Amplitude</span><span class="val mono" id="lblP">0.00</span></div>
+        <div class="chart-canvas-wrap"><canvas id="cvP"></canvas></div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-label-row"><span class="name">S-Wave Amplitude</span><span class="val mono" id="lblS">0.00</span></div>
+        <div class="chart-canvas-wrap"><canvas id="cvS"></canvas></div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-label-row"><span class="name">Ground Acceleration</span><span class="val mono" id="lblAcc">0.0 gal</span></div>
+        <div class="chart-canvas-wrap"><canvas id="cvAcc"></canvas></div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-label-row"><span class="name">Ground Velocity</span><span class="val mono" id="lblVel">0.0 cm/s</span></div>
+        <div class="chart-canvas-wrap"><canvas id="cvVel"></canvas></div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-label-row"><span class="name">Dominant Frequency</span><span class="val mono" id="lblFreq">0.0 Hz</span></div>
+        <div class="chart-canvas-wrap"><canvas id="cvFreq"></canvas></div>
+      </div>
+      <div class="chart-block">
+        <div class="chart-label-row"><span class="name">Estimated Magnitude</span><span class="val mono" id="lblMag">--</span></div>
+        <div class="chart-canvas-wrap"><canvas id="cvMag"></canvas></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT PANEL ============ -->
+  <div class="right-panel">
+    <div class="top-right">
+      <p class="section-title">Live Sensor Readout</p>
+      <div class="sensor-grid">
+        <div class="sensor-row"><span class="label">P-Wave Amplitude</span><span class="value mono" id="sP">0.00 mm/s</span></div>
+        <div class="sensor-row"><span class="label">S-Wave Amplitude</span><span class="value mono" id="sS">0.00 mm/s</span></div>
+        <div class="sensor-row"><span class="label">Ground Velocity</span><span class="value mono" id="sVel">0.0 cm/s</span></div>
+        <div class="sensor-row"><span class="label">Ground Acceleration</span><span class="value mono" id="sAcc">0.0 gal</span></div>
+        <div class="sensor-row"><span class="label">Dominant Frequency</span><span class="value mono" id="sFreq">0.0 Hz</span></div>
+        <div class="sensor-row"><span class="label">Estimated Magnitude</span><span class="value mono" id="sMag">--</span></div>
+        <div class="sensor-row"><span class="label">Epicenter Distance</span><span class="value mono" id="sEpi">--</span></div>
+        <div class="sensor-row"><span class="label">Est. Arrival Time</span><span class="value mono" id="sEta">--</span></div>
+        <div class="sensor-row"><span class="label">Sensor Status</span><span class="value mono" id="sStatus"><span class="sensor-status-dot" id="sStatusDot"></span>ONLINE · NOMINAL</span></div>
+      </div>
+    </div>
+
+    <div class="bottom-right">
+      <div class="emergency-banner" id="emergencyBanner">
+        <div class="k">Emergency State</div>
+        <div class="state" id="emergencyState">MONITORING</div>
+      </div>
+
+      <p class="section-title">System Status</p>
+      <div class="cards-grid" id="cardsGrid">
+        <div class="card"><div class="title">Ground Motion</div><div class="value mono" id="cGroundVal">--</div><span class="badge negligible" id="cGroundBadge">🟢 Negligible</span></div>
+        <div class="card"><div class="title">Frequency</div><div class="value mono" id="cFreqVal">--</div><span class="badge negligible" id="cFreqBadge">🟢 Negligible</span></div>
+        <div class="card"><div class="title">Magnitude</div><div class="value mono" id="cMagVal">--</div><span class="badge negligible" id="cMagBadge">🟢 Negligible</span></div>
+        <div class="card"><div class="title">Acceleration</div><div class="value mono" id="cAccVal">--</div><span class="badge negligible" id="cAccBadge">🟢 Negligible</span></div>
+        <div class="card"><div class="title">Velocity</div><div class="value mono" id="cVelVal">--</div><span class="badge negligible" id="cVelBadge">🟢 Negligible</span></div>
+        <div class="card"><div class="title">P-Wave</div><div class="value mono" id="cPVal">--</div><span class="badge negligible" id="cPBadge">🟢 Negligible</span></div>
+        <div class="card"><div class="title">S-Wave</div><div class="value mono" id="cSVal">--</div><span class="badge negligible" id="cSBadge">🟢 Negligible</span></div>
+        <div class="card"><div class="title">Overall Risk</div><div class="value mono" id="cRiskVal">--</div><span class="badge negligible" id="cRiskBadge">🟢 Negligible</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* =========================================================================
+   SEISMOS — deterministic Earthquake Early Warning simulation engine
+   No Math.random() is used anywhere. Every value is a pure function of time.
+   ========================================================================= */
+
+const CYCLE = 55; // seconds, full loop duration
+
+const RISK = {
+  negligible:{label:'Negligible', emoji:'🟢', color:'--green', hex:'#2ECC71'},
+  marginal:{label:'Marginal', emoji:'🟡', color:'--yellow', hex:'#F5C518'},
+  severe:{label:'Severe', emoji:'🟠', color:'--orange', hex:'#FF8A3D'},
+  catastrophic:{label:'Catastrophic', emoji:'🔴', color:'--red', hex:'#FF3B4E'},
+};
+
+function lerp(a,b,t){ return a + (b-a)*t; }
+function clamp(x,a,b){ return Math.max(a, Math.min(b,x)); }
+function smoothstep(e0,e1,x){
+  const t = clamp((x-e0)/(e1-e0), 0, 1);
+  return t*t*(3-2*t);
+}
+
+/* ---- Phase metric engine ---------------------------------------------- */
+function computeMetrics(t){
+  // t is expected already wrapped into [0, CYCLE)
+  let m = {};
+
+  if (t < 10){ // PHASE 1 — Normal background noise
+    const lt = t/10;
+    m.phaseIndex = 1; m.phaseLabel = 'NORMAL MONITORING';
+    m.risk = 'negligible';
+    m.pAmpEnv = 0.30; m.sAmpEnv = 0.15; m.accelEnv = 0.20; m.velEnv = 0.15;
+    m.freq = 1.2;
+    m.magnitude = null; m.epicenter = null; m.countdown = null;
+  }
+  else if (t < 15){ // PHASE 2 — Micro tremors
+    const lt = smoothstep(0,1,(t-10)/5);
+    m.phaseIndex = 2; m.phaseLabel = 'MICRO TREMORS';
+    m.risk = 'marginal';
+    m.pAmpEnv = lerp(0.30, 1.00, lt); m.sAmpEnv = lerp(0.15,0.25,lt);
+    m.accelEnv = lerp(0.20,0.50,lt); m.velEnv = lerp(0.15,0.40,lt);
+    m.freq = lerp(1.2, 2.5, lt);
+    m.magnitude = null; m.epicenter = null; m.countdown = null;
+  }
+  else if (t < 23){ // PHASE 3 — P-wave arrival / detection
+    const lt = smoothstep(0,1,(t-15)/8);
+    m.phaseIndex = 3; m.phaseLabel = 'P-WAVE DETECTED';
+    m.risk = 'severe';
+    m.pAmpEnv = lerp(1.00, 2.20, lt); m.sAmpEnv = lerp(0.25,0.35,lt);
+    m.accelEnv = lerp(0.50,1.00,lt); m.velEnv = lerp(0.40,0.70,lt);
+    m.freq = lerp(2.5, 7.0, lt);
+    m.magnitude = lerp(3.8, 4.6, lt);
+    m.epicenter = 46;
+    m.countdown = 15 - (t - 15);
+  }
+  else if (t < 30){ // PHASE 4 — Earthquake analysis
+    const lt = smoothstep(0,1,(t-23)/7);
+    m.phaseIndex = 4; m.phaseLabel = 'ANALYZING EVENT';
+    m.risk = 'severe';
+    m.pAmpEnv = lerp(2.20, 2.00, lt); m.sAmpEnv = lerp(0.35,0.60,lt);
+    m.accelEnv = lerp(1.00,1.60,lt); m.velEnv = lerp(0.70,1.20,lt);
+    m.freq = lerp(7.0, 4.0, lt);
+    m.magnitude = lerp(4.6, 5.9, lt);
+    m.epicenter = 46;
+    m.countdown = Math.max(0, 15 - (t - 15));
+  }
+  else if (t < 40){ // PHASE 5 — S-wave arrival / emergency
+    const local = (t-30)/10;
+    const rampUp = smoothstep(0, 0.15, local);
+    const tailOff = 1 - smoothstep(0.85, 1.0, local)*0.30;
+    m.phaseIndex = 5; m.phaseLabel = 'S-WAVE ARRIVAL — EMERGENCY';
+    m.risk = 'catastrophic';
+    m.pAmpEnv = lerp(2.00, 1.60, local);
+    m.sAmpEnv = (0.60 + 8.40*rampUp) * tailOff;
+    m.accelEnv = (1.60 + 7.00*rampUp) * tailOff;
+    m.velEnv  = (1.20 + 6.00*rampUp) * tailOff;
+    m.freq = lerp(4.0, 1.8, local);
+    m.magnitude = 6.2;
+    m.epicenter = 46;
+    m.countdown = 0;
+  }
+  else { // PHASE 6 — Decay / recovery
+    const lt = smoothstep(0,1,(t-40)/15);
+    m.phaseIndex = 6; m.phaseLabel = 'STABILIZING · RECOVERY';
+    m.risk = lt < 0.34 ? 'severe' : (lt < 0.7 ? 'marginal' : 'negligible');
+    m.pAmpEnv = lerp(1.60, 0.30, lt);
+    m.sAmpEnv = lerp(6.30, 0.15, lt);
+    m.accelEnv = lerp(7.50, 0.20, lt);
+    m.velEnv  = lerp(6.30, 0.15, lt);
+    m.freq = lerp(1.8, 1.2, lt);
+    m.magnitude = 6.2;
+    m.epicenter = lt < 0.7 ? 46 : null;
+    m.countdown = null;
+  }
+  return m;
+}
+
+/* ---- Oscillator: deterministic sum-of-harmonics waveform generator ---- */
+function osc(simT, f, phase){
+  return 0.60*Math.sin(2*Math.PI*f*simT + phase)
+       + 0.25*Math.sin(2*Math.PI*f*2.7*simT + phase*1.3 + 0.4)
+       + 0.15*Math.sin(2*Math.PI*f*5.1*simT + phase*0.7 + 1.1);
+}
+
+/* ---- Ring buffers for the 6 scrolling charts --------------------------- */
+const WINDOW_SEC = 7;
+const buffers = {
+  p:[], s:[], acc:[], vel:[], freq:[], mag:[]
+};
+function pushSample(arr, x, y){
+  arr.push([x,y]);
+  while(arr.length && arr[0][0] < x - WINDOW_SEC - 0.5) arr.shift();
+}
+
+/* ---- Canvas setup ------------------------------------------------------ */
+const canvases = {
+  p: document.getElementById('cvP'),
+  s: document.getElementById('cvS'),
+  acc: document.getElementById('cvAcc'),
+  vel: document.getElementById('cvVel'),
+  freq: document.getElementById('cvFreq'),
+  mag: document.getElementById('cvMag'),
+};
+const ctxs = {};
+function resizeCanvas(cv){
+  const dpr = window.devicePixelRatio || 1;
+  const rect = cv.getBoundingClientRect();
+  cv.width = Math.max(1, Math.round(rect.width * dpr));
+  cv.height = Math.max(1, Math.round(rect.height * dpr));
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctxs[cv.id] = ctx;
+}
+function resizeAll(){ Object.values(canvases).forEach(resizeCanvas); }
+window.addEventListener('resize', resizeAll);
+
+function drawWaveChart(cv, buf, range, colorHex, simT){
+  const ctx = ctxs[cv.id];
+  if(!ctx) return;
+  const rect = cv.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0,0,W,H);
+
+  // grid
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for(let i=1;i<4;i++){
+    const y = (H/4)*i;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  // zero line
+  const zeroY = H/2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.09)';
+  ctx.beginPath(); ctx.moveTo(0,zeroY); ctx.lineTo(W,zeroY); ctx.stroke();
+
+  if(buf.length < 2) return;
+  ctx.beginPath();
+  ctx.lineWidth = 1.6;
+  ctx.strokeStyle = colorHex;
+  ctx.shadowColor = colorHex;
+  ctx.shadowBlur = 6;
+  for(let i=0;i<buf.length;i++){
+    const [x,y] = buf[i];
+    const px = W - ((simT - x) / WINDOW_SEC) * W;
+    const py = H/2 - (y/range) * (H/2*0.92);
+    if(i===0) ctx.moveTo(px,py); else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // scan line at right edge
+  ctx.strokeStyle = colorHex;
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.moveTo(W-1,0); ctx.lineTo(W-1,H); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+function drawLineMetricChart(cv, buf, range0, range1, colorHex, simT, isNullAware){
+  const ctx = ctxs[cv.id];
+  if(!ctx) return;
+  const rect = cv.getBoundingClientRect();
+  const W = rect.width, H = rect.height;
+  ctx.clearRect(0,0,W,H);
+  ctx.strokeStyle = 'rgba(255,255,255,0.05)';
+  ctx.lineWidth = 1;
+  for(let i=1;i<4;i++){
+    const y = (H/4)*i;
+    ctx.beginPath(); ctx.moveTo(0,y); ctx.lineTo(W,y); ctx.stroke();
+  }
+  if(buf.length < 2) return;
+  ctx.beginPath();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = colorHex;
+  ctx.shadowColor = colorHex;
+  ctx.shadowBlur = 5;
+  let started = false;
+  for(let i=0;i<buf.length;i++){
+    const [x,y] = buf[i];
+    const px = W - ((simT - x) / WINDOW_SEC) * W;
+    if (isNullAware && y === null){ started = false; continue; }
+    const py = H - ((y - range0)/(range1-range0)) * H*0.92 - H*0.04;
+    if(!started){ ctx.moveTo(px,py); started = true; } else ctx.lineTo(px,py);
+  }
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = colorHex;
+  ctx.globalAlpha = 0.35;
+  ctx.beginPath(); ctx.moveTo(W-1,0); ctx.lineTo(W-1,H); ctx.stroke();
+  ctx.globalAlpha = 1;
+}
+
+/* ---- Risk badge helpers ------------------------------------------------ */
+function riskFromValue(v, t1, t2, t3){
+  if (v >= t3) return 'catastrophic';
+  if (v >= t2) return 'severe';
+  if (v >= t1) return 'marginal';
+  return 'negligible';
+}
+function setBadge(elId, valElId, riskKey, valueText){
+  const badge = document.getElementById(elId);
+  const val = document.getElementById(valElId);
+  const r = RISK[riskKey];
+  badge.className = 'badge ' + riskKey;
+  badge.textContent = r.emoji + ' ' + r.label;
+  if(val) val.textContent = valueText;
+}
+
+/* ---- Formatting helpers -------------------------------------------------- */
+function fmt(n, d=2){ return n.toFixed(d); }
+function fmtOrDash(n, d, suffix){ return (n===null || n===undefined) ? '--' : fmt(n,d) + (suffix||''); }
+
+/* =========================================================================
+   FLAG E — sustained-severe detector for the downstream alerting model
+   -------------------------------------------------------------------------
+   This dashboard does NOT decide what to do about an alert — that's the
+   job of the external model this flag is handed off to. All this does is
+   answer one question reliably: "has the risk level held at SEVERE or
+   worse for long enough that this isn't a noise blip?"
+
+   Rule: risk must read 'severe' or 'catastrophic' continuously for
+   E_TRIGGER_SECONDS before E flips true. It resets the moment risk drops
+   back below 'severe' (i.e. to 'marginal' or 'negligible'). Note it is
+   NOT gated on 'catastrophic' — in this simulation 'severe' sustains for
+   ~15s (the P-wave-detected + analysis phases) before the S-wave phase
+   ever turns 'catastrophic', so E fires during that lead-in window and
+   gives the alert model real early-warning time instead of only firing
+   once the worst has already arrived.
+   ========================================================================= */
+const E_TRIGGER_SECONDS = 3; // consecutive seconds of severe+ risk required to arm the flag
+
+let severeStreakStart = null; // simT when the current severe-or-worse streak began, or null
+window.E = false;             // <-- poll this from the external alert model at any time
+let lastEValue = false;
+
+function updateFlagE(simT, m){
+  const isSevereOrWorse = (m.risk === 'severe' || m.risk === 'catastrophic');
+
+  if (isSevereOrWorse){
+    if (severeStreakStart === null) severeStreakStart = simT;
+    if (!window.E && (simT - severeStreakStart) >= E_TRIGGER_SECONDS){
+      window.E = true;
+    }
+  } else {
+    severeStreakStart = null;
+    window.E = false;
+  }
+
+  if (window.E !== lastEValue){
+    lastEValue = window.E;
+    const payload = {
+      flag: 'E',
+      value: window.E,
+      risk: m.risk,
+      phase: m.phaseLabel,
+      magnitude: m.magnitude,
+      epicenterKm: m.epicenter,
+      simTime: simT,
+      timestamp: Date.now()
+    };
+    // 1) DOM CustomEvent — for any script sharing this page/context
+    window.dispatchEvent(new CustomEvent('eew:flagE', { detail: payload }));
+    // 2) postMessage — for a parent page / different frame hosting the alert model
+    try{ window.parent.postMessage({ type: 'EEW_FLAG_E', ...payload }, '*'); }catch(e){}
+    try{ window.postMessage({ type: 'EEW_FLAG_E', ...payload }, '*'); }catch(e){}
+  }
+
+  // on-screen indicator so the flag's behavior is visible during a live demo
+  const pill = document.getElementById('flagEPill');
+  const state = document.getElementById('flagEState');
+  if (pill){
+    pill.classList.toggle('armed', window.E);
+    state.textContent = window.E ? 'ON' : 'OFF';
+  }
+}
+
+/* ---- Main animation loop ------------------------------------------------ */
+const simStart = performance.now();
+let lastDomUpdate = 0;
+
+function frame(now){
+  const simT = (now - simStart) / 1000;      // continuous, never wraps -> seamless loop math
+  const t = simT % CYCLE;                     // wrapped, for envelope lookups
+
+  const m = computeMetrics(t);
+  const riskHex = RISK[m.risk].hex;
+  const riskVar = RISK[m.risk].color;
+
+  updateFlagE(simT, m);
+
+  // --- generate waveform samples (deterministic) ---
+  const pVal   = m.pAmpEnv   * osc(simT, m.freq*1.4, 0.0);
+  const sVal   = m.sAmpEnv   * osc(simT, m.freq*0.6, 1.7);
+  const accVal = m.accelEnv  * osc(simT, m.freq*1.8, 0.9);
+  const velVal = m.velEnv    * osc(simT, m.freq*0.9, 2.6);
+
+  pushSample(buffers.p, simT, pVal);
+  pushSample(buffers.s, simT, sVal);
+  pushSample(buffers.acc, simT, accVal);
+  pushSample(buffers.vel, simT, velVal);
+  pushSample(buffers.freq, simT, m.freq);
+  pushSample(buffers.mag, simT, m.magnitude);
+
+  // --- draw all 6 charts, recolored by current risk ---
+  drawWaveChart(canvases.p, buffers.p, 3.2, riskHex, simT);
+  drawWaveChart(canvases.s, buffers.s, 10.5, riskHex, simT);
+  drawWaveChart(canvases.acc, buffers.acc, 10.5, riskHex, simT);
+  drawWaveChart(canvases.vel, buffers.vel, 8.5, riskHex, simT);
+  drawLineMetricChart(canvases.freq, buffers.freq, 0, 8, riskHex, simT, false);
+  drawLineMetricChart(canvases.mag, buffers.mag, 0, 7, riskHex, simT, true);
+
+  // --- throttled DOM / text updates (~10/sec) ---
+  if (now - lastDomUpdate > 100){
+    lastDomUpdate = now;
+
+    // ambient theme
+    document.documentElement.style.setProperty('--risk-color', `var(${riskVar})`);
+    document.documentElement.style.setProperty('--risk-glow', hexToRgba(riskHex, 0.14));
+
+    document.getElementById('phaseLabel').textContent = m.phaseLabel;
+
+    // left header chips
+    document.getElementById('chipMagnitude').textContent = m.magnitude===null ? '--' : 'Mw ' + fmt(m.magnitude,1);
+    document.getElementById('chipEpicenter').textContent = m.epicenter===null ? '--' : m.epicenter + ' km';
+    document.getElementById('chipCountdown').textContent = m.countdown===null ? '--' : (m.countdown<=0.05 && m.phaseIndex===5 ? 'ARRIVED' : fmt(Math.max(0,m.countdown),1) + ' s');
+    const mm = Math.floor(t/60).toString().padStart(2,'0');
+    const ss = Math.floor(t%60).toString().padStart(2,'0');
+    document.getElementById('chipSimTime').textContent = mm+':'+ss;
+
+    // chart value labels
+    document.getElementById('lblP').textContent = fmt(pVal,2);
+    document.getElementById('lblS').textContent = fmt(sVal,2);
+    document.getElementById('lblAcc').textContent = fmt(accVal*30,1) + ' gal';
+    document.getElementById('lblVel').textContent = fmt(velVal*5,1) + ' cm/s';
+    document.getElementById('lblFreq').textContent = fmt(m.freq,1) + ' Hz';
+    document.getElementById('lblMag').textContent = m.magnitude===null ? '--' : fmt(m.magnitude,1);
+
+    // sensor panel
+    document.getElementById('sP').textContent = fmt(pVal,2) + ' mm/s';
+    document.getElementById('sS').textContent = fmt(sVal,2) + ' mm/s';
+    document.getElementById('sVel').textContent = fmt(velVal*5,1) + ' cm/s';
+    document.getElementById('sAcc').textContent = fmt(accVal*30,1) + ' gal';
+    document.getElementById('sFreq').textContent = fmt(m.freq,1) + ' Hz';
+    document.getElementById('sMag').textContent = m.magnitude===null ? '--' : 'Mw ' + fmt(m.magnitude,1);
+    document.getElementById('sEpi').textContent = m.epicenter===null ? '--' : m.epicenter + ' km';
+    document.getElementById('sEta').textContent = m.countdown===null ? '--' : (m.countdown<=0.05 && m.phaseIndex===5 ? 'ARRIVED' : fmt(Math.max(0,m.countdown),1)+' s');
+    const statusText = m.phaseIndex===5 ? 'ONLINE · HIGH LOAD' : 'ONLINE · NOMINAL';
+    document.getElementById('sStatus').innerHTML = '<span class="sensor-status-dot" id="sStatusDot"></span>' + statusText;
+    document.getElementById('sStatusDot').style.background = riskHex;
+    document.getElementById('sStatusDot').style.boxShadow = '0 0 6px ' + riskHex;
+
+    // emergency banner
+    const banner = document.getElementById('emergencyBanner');
+    banner.style.borderColor = riskHex;
+    banner.style.background = hexToRgba(riskHex, 0.08);
+    document.getElementById('emergencyState').textContent = m.phaseIndex===5 ? 'EMERGENCY — TAKE ACTION' : m.phaseLabel;
+    document.getElementById('emergencyState').style.color = riskHex;
+    if (m.phaseIndex===5) banner.classList.add('pulsing'); else banner.classList.remove('pulsing');
+
+    // status cards
+    setBadge('cGroundBadge','cGroundVal', riskFromValue(accVal+velVal, 0.6, 1.6, 5), fmt(accVal*30,0)+' gal');
+    setBadge('cFreqBadge','cFreqVal', m.freq>5.5 ? 'severe' : (m.freq>2.2?'marginal':'negligible'), fmt(m.freq,1)+' Hz');
+    setBadge('cMagBadge','cMagVal', m.magnitude===null ? 'negligible' : riskFromValue(m.magnitude, 3.5, 5.0, 6.0), m.magnitude===null?'--':fmt(m.magnitude,1));
+    setBadge('cAccBadge','cAccVal', riskFromValue(accVal, 0.6, 1.6, 5), fmt(accVal*30,0)+' gal');
+    setBadge('cVelBadge','cVelVal', riskFromValue(velVal, 0.5, 1.3, 4), fmt(velVal*5,1)+' cm/s');
+    setBadge('cPBadge','cPVal', riskFromValue(m.pAmpEnv, 0.8, 1.8, 2.6), fmt(pVal,2));
+    setBadge('cSBadge','cSVal', riskFromValue(m.sAmpEnv, 0.4, 1.2, 5), fmt(sVal,2));
+    setBadge('cRiskBadge','cRiskVal', m.risk, RISK[m.risk].label);
+  }
+
+  requestAnimationFrame(frame);
+}
+
+function hexToRgba(hex, a){
+  const h = hex.replace('#','');
+  const r = parseInt(h.substring(0,2),16);
+  const g = parseInt(h.substring(2,4),16);
+  const b = parseInt(h.substring(4,6),16);
+  return `rgba(${r},${g},${b},${a})`;
+}
+
+resizeAll();
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
