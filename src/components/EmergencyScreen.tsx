@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from 'react';
 import { AlertOctagon, Flame, Navigation, Cross, Loader2, AlertCircle } from 'lucide-react';
 import type { EmergencyPayload } from '../hooks/useSocket';
 import { useHospitalNavigation } from '../hooks/useHospitalNavigation';
+import { speakEmergency, stopEmergencySpeech } from '../utils/speech';
 
 interface EmergencyScreenProps {
   payload: EmergencyPayload | null;
@@ -17,7 +18,10 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
   } = useHospitalNavigation();
 
   useEffect(() => {
-    // 1. Device Vibration
+    // 1. Trigger Web Speech API Announcement with PA Warning Chime
+    speakEmergency();
+
+    // 2. Device Vibration
     if (typeof window !== 'undefined' && 'vibrate' in navigator) {
       try {
         navigator.vibrate([300, 100, 300, 100, 600]);
@@ -26,7 +30,7 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
       }
     }
 
-    // 2. Web Audio Alarm Sound Synthesizer (Works without external assets)
+    // 3. Web Audio Alarm Sound Synthesizer
     try {
       const AudioCtx = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       if (AudioCtx) {
@@ -53,6 +57,8 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
     }
 
     return () => {
+      // Immediately cancel speech and audio synthesizer on unmount or clear-alert
+      stopEmergencySpeech();
       if (audioCtxRef.current) {
         audioCtxRef.current.close().catch(() => {});
       }
