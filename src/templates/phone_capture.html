@@ -107,7 +107,7 @@
 </head>
 <body>
   <h1>📡 CrowdFlow Phone Node</h1>
-  <p class="subtitle">Stream your phone camera to the Central Dashboard</p>
+  <p class="subtitle">This phone becomes one CCTV node in the live coverage twin.</p>
 
   <input id="camId" type="text" placeholder="Camera ID (e.g. phone_main)" value="" />
 
@@ -139,8 +139,10 @@
     const statFramesEl = document.getElementById('statFrames');
     const statErrEl    = document.getElementById('statErr');
 
-    // Auto-set a reasonable default cam ID from device info
-    camIdEl.value = 'phone_' + (navigator.userAgent.match(/iPhone|iPad/i) ? 'ios' : 'android') + '_' + Date.now().toString(36);
+    // Keep the same identity when this phone reconnects, so it returns to its CCTV slot.
+    const savedCameraId = localStorage.getItem('crowdflow_camera_id');
+    const generatedCameraId = 'phone_' + (navigator.userAgent.match(/iPhone|iPad/i) ? 'ios' : 'android') + '_' + Math.random().toString(36).slice(2, 8);
+    camIdEl.value = savedCameraId || generatedCameraId;
 
     let stream = null;
     let sendLoop = null;
@@ -177,6 +179,7 @@
         const fd = new FormData();
         fd.append('frame', blob, 'frame.jpg');
         fd.append('camera_id', camId);
+        fd.append('device_name', `Phone CCTV (${camId})`);
 
         try {
           const resp = await fetch('/api/stream_upload', { method: 'POST', body: fd });
@@ -207,6 +210,7 @@
       try {
         setStatus('Opening camera...', 'warn');
         await openCamera();
+        localStorage.setItem('crowdflow_camera_id', camIdEl.value.trim() || generatedCameraId);
         setStatus('<span class="ok">✓ Camera open. Starting stream...</span>');
 
         const interval = Math.round(1000 / TARGET_FPS);

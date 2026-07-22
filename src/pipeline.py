@@ -106,7 +106,7 @@ class CrowdFlowPipeline:
             tracks=tracks,
             track_velocities=self.tracker.track_velocities,
             frame_shape=(H, W),
-            camera_id=camera_id
+            camera_id=camera_id or ""
         )
 
         # Build Output Contract Object strictly conforming to specification + digital twin bonus payload
@@ -145,7 +145,8 @@ class CrowdFlowPipeline:
             fps=avg_fps,
             timings=timings,
             digital_twin_engine=self.digital_twin,
-            track_velocities=self.tracker.track_velocities
+            track_velocities=self.tracker.track_velocities,
+            camera_id=camera_id or ""
         )
 
         return contract_output, rendered_frame

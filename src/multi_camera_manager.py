@@ -2,7 +2,10 @@ import cv2
 import time
 import threading
 import queue
+import json
+import os
 import numpy as np
+from collections import deque
 from typing import Dict, List, Any, Optional, Tuple
 from config import load_config, PipelineConfig
 from pipeline import CrowdFlowPipeline
@@ -72,33 +75,64 @@ def deduplicate_global_tracks(all_camera_tracks: List[Dict], cam_zones: Dict[str
 # Each camera covers a separate tile in the 2D overhead floor plan.
 # Add more zones here as you connect more cameras/phones.
 # ─────────────────────────────────────────────────────────────────
-CAMERA_ZONES = {
-    "cam_1":        {"label": "Zone A — Main Laptop",  "x": 0.0,  "y": 0.0,  "w": 0.5, "h": 0.5},
-    "cam_2":        {"label": "Zone B — Secondary",    "x": 0.5,  "y": 0.0,  "w": 0.5, "h": 0.5},
-}
-# Any phone/extra cam that connects auto-gets the next zone slot
-_EXTRA_ZONE_SLOTS = [
-    {"x": 0.0,  "y": 0.5, "w": 0.5, "h": 0.5},   # Zone C
-    {"x": 0.5,  "y": 0.5, "w": 0.5, "h": 0.5},   # Zone D
-    {"x": 0.0,  "y": 0.0, "w": 0.33,"h": 0.5},   # Zone E
-    {"x": 0.33, "y": 0.0, "w": 0.34,"h": 0.5},   # Zone F
+MAX_CCTV_DEVICES = 4
+_DEVICE_SLOTS = [
+    {"slot": "A", "label": "Camera A", "x": 0.0, "y": 0.0, "w": 0.5, "h": 0.5},
+    {"slot": "B", "label": "Camera B", "x": 0.5, "y": 0.0, "w": 0.5, "h": 0.5},
+    {"slot": "C", "label": "Camera C", "x": 0.0, "y": 0.5, "w": 0.5, "h": 0.5},
+    {"slot": "D", "label": "Camera D", "x": 0.5, "y": 0.5, "w": 0.5, "h": 0.5},
 ]
-_extra_slot_index = 0
+CAMERA_ZONES: Dict[str, dict] = {}
 _zone_lock = threading.Lock()
+_SLOT_REGISTRY_FILE = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    "data",
+    "cctv_device_slots.json",
+)
+
+
+def _load_camera_zones() -> Dict[str, dict]:
+    """Load stable CCTV slot assignments without trusting malformed registry data."""
+    if not os.path.exists(_SLOT_REGISTRY_FILE):
+        return {}
+    try:
+        with open(_SLOT_REGISTRY_FILE, "r", encoding="utf-8") as handle:
+            saved = json.load(handle)
+        slots_by_id = saved.get("slots", {})
+        valid_slots = {slot["slot"]: slot for slot in _DEVICE_SLOTS}
+        result = {}
+        for camera_id, slot in slots_by_id.items():
+            slot_id = slot.get("slot") if isinstance(slot, dict) else None
+            if isinstance(camera_id, str) and slot_id in valid_slots:
+                result[camera_id] = dict(valid_slots[slot_id])
+        return result
+    except (OSError, ValueError, TypeError):
+        return {}
+
+
+def _save_camera_zones() -> None:
+    os.makedirs(os.path.dirname(_SLOT_REGISTRY_FILE), exist_ok=True)
+    temporary_path = _SLOT_REGISTRY_FILE + ".tmp"
+    with open(temporary_path, "w", encoding="utf-8") as handle:
+        json.dump({"version": 1, "slots": CAMERA_ZONES}, handle, indent=2)
+    os.replace(temporary_path, _SLOT_REGISTRY_FILE)
+
+
+CAMERA_ZONES.update(_load_camera_zones())
 
 
 def get_or_assign_zone(camera_id: str) -> dict:
-    """Returns spatial zone for a camera, assigning a new slot if unknown."""
-    global _extra_slot_index
+    """Returns a stable A-D coverage slot for a camera in this server session."""
     if camera_id in CAMERA_ZONES:
         return CAMERA_ZONES[camera_id]
     with _zone_lock:
         if camera_id not in CAMERA_ZONES:
-            slot_idx = _extra_slot_index % len(_EXTRA_ZONE_SLOTS)
-            slot = _EXTRA_ZONE_SLOTS[slot_idx]
-            _extra_slot_index += 1
-            label = f"Zone {chr(65 + slot_idx + 2)} — {camera_id}"
-            CAMERA_ZONES[camera_id] = {"label": label, **slot}
+            used_slots = {zone["slot"] for zone in CAMERA_ZONES.values()}
+            slot = next((item for item in _DEVICE_SLOTS if item["slot"] not in used_slots), None)
+            if slot is None:
+                raise ValueError(f"Maximum of {MAX_CCTV_DEVICES} CCTV devices reached")
+            CAMERA_ZONES[camera_id] = dict(slot)
+            _save_camera_zones()
         return CAMERA_ZONES[camera_id]
 
 
@@ -185,18 +219,29 @@ class CameraWorker(threading.Thread):
         self.latest_contract: Dict[str, Any] = {}
         self.last_heartbeat: float = time.time()
         self.last_frame_time: float = time.time()   # updated every frame received
+        self.last_processed_time: float = 0.0
+        self.frames_received: int = 0
+        self.frames_processed: int = 0
+        self.frames_dropped: int = 0
+        self.frame_arrival_times = deque(maxlen=30)
+        self.frame_processed_times = deque(maxlen=30)
         self.is_push_stream: bool = str(source).startswith("push_stream") or str(source).startswith("browser_stream")
         self.lock = threading.Lock()
         self.daemon = True
 
     def push_frame(self, frame: np.ndarray):
-        self.last_frame_time = time.time()   # mark activity
-        if self.frame_queue.full():
-            try:
-                self.frame_queue.get_nowait()
-            except queue.Empty:
-                pass
-        self.frame_queue.put(frame)
+        now = time.time()
+        with self.lock:
+            self.last_frame_time = now
+            self.frames_received += 1
+            self.frame_arrival_times.append(now)
+            if self.frame_queue.full():
+                try:
+                    self.frame_queue.get_nowait()
+                    self.frames_dropped += 1
+                except queue.Empty:
+                    pass
+            self.frame_queue.put(frame)
 
     def run(self):
         self.running = True
@@ -237,6 +282,9 @@ class CameraWorker(threading.Thread):
                     contract_output["digital_twin_state"]["zone"] = self.zone
 
                 with self.lock:
+                    self.last_processed_time = time.time()
+                    self.frames_processed += 1
+                    self.frame_processed_times.append(self.last_processed_time)
                     self.latest_raw_frame = frame
                     self.latest_rendered_frame = rendered_frame
                     self.latest_contract = contract_output
@@ -254,6 +302,27 @@ class CameraWorker(threading.Thread):
     def get_latest_data(self) -> Tuple[Optional[np.ndarray], Dict[str, Any]]:
         with self.lock:
             return self.latest_rendered_frame, self.latest_contract.copy()
+
+    @staticmethod
+    def _rate(timestamps: deque) -> float:
+        if len(timestamps) < 2:
+            return 0.0
+        elapsed = timestamps[-1] - timestamps[0]
+        return round((len(timestamps) - 1) / elapsed, 1) if elapsed > 1e-3 else 0.0
+
+    def get_health(self) -> Dict[str, Any]:
+        """Snapshot transport and inference health for the control-room UI."""
+        with self.lock:
+            age = time.time() - self.last_frame_time
+            return {
+                "status": "LIVE" if age <= 3.0 else "STALE",
+                "last_frame_age_sec": round(age, 1),
+                "input_fps": self._rate(self.frame_arrival_times),
+                "processing_fps": self._rate(self.frame_processed_times),
+                "frames_received": self.frames_received,
+                "frames_processed": self.frames_processed,
+                "frames_dropped": self.frames_dropped,
+            }
 
     def stop(self):
         self.running = False
@@ -296,6 +365,9 @@ class MultiCameraManager:
         """Internal: add camera WITHOUT acquiring lock (caller must hold it)."""
         if camera_id in self.workers:
             return False
+        if len(self.workers) >= MAX_CCTV_DEVICES:
+            print(f"[MultiCam] Rejecting '{camera_id}': maximum of {MAX_CCTV_DEVICES} CCTV devices reached.")
+            return False
         cam_config = load_config(self.config_path)
         cam_config.input_source = str(source)
         worker = CameraWorker(camera_id, name, source, cam_config)
@@ -308,7 +380,7 @@ class MultiCameraManager:
         with self.lock:
             return self._add_camera_nolock(camera_id, name, source)
 
-    def push_laptop_frame(self, camera_id: str, frame: np.ndarray):
+    def push_laptop_frame(self, camera_id: str, frame: np.ndarray, name: Optional[str] = None) -> bool:
         """
         Receives a frame from a secondary laptop or phone stream.
         Fixed: no longer holds self.lock while calling add_camera (deadlock fix).
@@ -323,13 +395,20 @@ class MultiCameraManager:
                 cam_num = None
 
         if needs_register:
-            display_name = f"Camera {cam_num} ({camera_id})"
-            self.add_camera(camera_id, display_name, f"push_stream:{camera_id}")
+            display_name = name or f"Camera {cam_num} ({camera_id})"
+            if not self.add_camera(camera_id, display_name, f"push_stream:{camera_id}"):
+                # Another upload may have registered this device while this
+                # request was waiting for the manager lock.
+                with self.lock:
+                    if camera_id not in self.workers:
+                        return False
             print(f"[MultiCam] New push-stream device registered: {display_name} → {CAMERA_ZONES.get(camera_id, {}).get('label','?')}")
 
         with self.lock:
             if camera_id in self.workers:
                 self.workers[camera_id].push_frame(frame)
+                return True
+        return False
 
     def remove_camera(self, camera_id: str):
         with self.lock:
@@ -383,18 +462,23 @@ class MultiCameraManager:
                 dt_state = contract.get("digital_twin_state", {})
                 avatars = dt_state.get("avatars", [])
                 for av in avatars:
+                    # position_twin_xz is global for calibrated cameras, camera-local otherwise.
                     xz = av.get("position_twin_xz", [50.0, 50.0])
-                    norm_x = xz[0] / 100.0   # 0.0 – 1.0 scale
+                    norm_x = xz[0] / 100.0   # 0.0 – 1.0 within camera frame
                     norm_y = xz[1] / 100.0
 
                     av["camera_id"] = cam_id
                     av["zone"] = zone
-                    if av.get("calibrated_homography"):
-                        # Direct continuous ground plan coordinates
+                    if (
+                        dt_state.get("homography_calibrated")
+                        or av.get("homography_calibrated")
+                        or av.get("calibrated_homography")
+                    ):
+                        # Calibrated cameras already emit global floor-plane coordinates.
                         av["twin_x"] = round(norm_x, 4)
                         av["twin_y"] = round(norm_y, 4)
                     else:
-                        # Fallback to uncalibrated tile zone offset
+                        # Temporary fallback for devices that do not yet have a venue transform.
                         av["twin_x"] = round(zone["x"] + norm_x * zone["w"], 4)
                         av["twin_y"] = round(zone["y"] + norm_y * zone["h"], 4)
                     all_avatars.append(av)
@@ -405,7 +489,8 @@ class MultiCameraManager:
                 "headcount": hc,
                 "risk_current": c_risk,
                 "risk_30s": p_risk.get("30s", 0.0),
-                "zone": zone
+                "zone": zone,
+                "health": worker.get_health(),
             })
 
         # Update global ID pool — release IDs for people who left all cameras
@@ -452,6 +537,8 @@ class MultiCameraManager:
                 "120s": predicted_120s
             },
             "active_cameras_count": len(workers_snapshot),
+            "maximum_cameras": MAX_CCTV_DEVICES,
+            "twin_mode": "coverage_grid",
             "cameras": camera_summaries,
             "digital_twin_avatars": all_avatars,
             "alerts": alerts,

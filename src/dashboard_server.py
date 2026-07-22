@@ -3,9 +3,9 @@ import time
 import cv2
 import argparse
 import numpy as np
+import re
 from flask import Flask, render_template, Response, jsonify, request
 from multi_camera_manager import MultiCameraManager
-from homography import calibrator
 
 app = Flask(__name__, template_folder="templates")
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -49,7 +49,12 @@ def stream_upload():
     if 'frame' not in request.files:
         return jsonify({"error": "no frame"}), 400
 
-    camera_id = request.form.get('camera_id', 'laptop_2')
+    camera_id = request.form.get('camera_id', 'laptop_2').strip()
+    device_name = request.form.get('device_name', '').strip()
+    if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", camera_id):
+        return jsonify({"error": "camera_id must contain only letters, numbers, _ or -"}), 400
+    if device_name and not re.fullmatch(r"[A-Za-z0-9 _()\-]{1,80}", device_name):
+        return jsonify({"error": "device_name contains unsupported characters"}), 400
     file = request.files['frame']
     img_bytes = file.read()
 
@@ -58,7 +63,9 @@ def stream_upload():
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if frame is not None:
-        camera_manager.push_laptop_frame(camera_id, frame)
+        accepted = camera_manager.push_laptop_frame(camera_id, frame, name=device_name or None)
+        if not accepted:
+            return jsonify({"error": "maximum of four CCTV devices reached", "camera_id": camera_id}), 409
         return jsonify({"success": True, "camera_id": camera_id}), 200
 
     return jsonify({"error": "invalid image"}), 400
@@ -81,44 +88,6 @@ def heartbeat():
 def phone_capture():
     """Browser-based camera capture page — open on phone browser over LAN."""
     return render_template('phone_capture.html')
-
-@app.route('/calibrate/<camera_id>')
-def calibrate_page(camera_id):
-    """Interactive 4-point homography calibration page."""
-    return render_template('calibrate.html', camera_id=camera_id)
-
-@app.route('/api/camera_snapshot/<camera_id>')
-def camera_snapshot(camera_id):
-    """Returns single JPEG frame for 4-point calibration UI."""
-    if camera_id in camera_manager.workers:
-        worker = camera_manager.workers[camera_id]
-        frame, _ = worker.get_latest_data()
-        if frame is not None:
-            ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 90])
-            if ret:
-                return Response(buffer.tobytes(), mimetype='image/jpeg')
-    return jsonify({"error": "camera snapshot not available"}), 404
-
-@app.route('/api/calibrate_camera', methods=['POST'])
-def calibrate_camera():
-    """Save 4-point homography calibration for a camera."""
-    data = request.get_json() or {}
-    cam_id = data.get("camera_id")
-    src_pts = data.get("src_points")  # [[x0,y0], [x1,y1], [x2,y2], [x3,y3]]
-    dst_pts = data.get("dst_points")  # [[X0,Y0], [X1,Y1], [X2,Y2], [X3,Y3]]
-
-    if not cam_id or not src_pts or not dst_pts:
-        return jsonify({"error": "missing parameters"}), 400
-
-    success = calibrator.set_calibration(cam_id, src_pts, dst_pts)
-    return jsonify({"success": success, "camera_id": cam_id})
-
-@app.route('/api/calibration_status/<camera_id>')
-def calibration_status(camera_id):
-    """Check calibration status for a camera."""
-    is_cal = calibrator.is_calibrated(camera_id)
-    cal_data = calibrator.calibrations.get(camera_id, {})
-    return jsonify({"camera_id": camera_id, "is_calibrated": is_cal, "data": cal_data})
 
 @app.route('/api/add_camera', methods=['POST'])
 def add_camera():
