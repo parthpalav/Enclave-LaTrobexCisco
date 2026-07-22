@@ -5,6 +5,7 @@ import { ControlButtons } from '../components/ControlButtons';
 import { HeatmapPlaceholder } from '../components/HeatmapPlaceholder';
 import { StatusPanel } from '../components/StatusPanel';
 import { ConfirmationModal } from '../components/ConfirmationModal';
+import { DisasterDetectionModal } from '../components/DisasterDetectionModal';
 import { Toast } from '../components/Toast';
 import type { ToastMessage } from '../components/Toast';
 import { QRCodePanel } from '../components/QRCodePanel';
@@ -24,6 +25,7 @@ export const Dashboard: React.FC = () => {
   } = useSocket();
 
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
+  const [isDisasterMenuOpen, setIsDisasterMenuOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
   // Toast Helper
@@ -76,15 +78,24 @@ export const Dashboard: React.FC = () => {
       {/* Toast Notifications */}
       <Toast toasts={toasts} onDismiss={handleDismissToast} />
 
-      {/* Confirmation Modal */}
+      {/* SOS Confirmation Modal */}
       <ConfirmationModal
         isOpen={isModalOpen}
         onCancel={handleCancelSOS}
         onConfirm={handleConfirmSOS}
       />
 
+      {/* Disaster Detection Menu Overlay Modal */}
+      <DisasterDetectionModal
+        isOpen={isDisasterMenuOpen}
+        onClose={() => setIsDisasterMenuOpen(false)}
+      />
+
       {/* 1. Dashboard Header */}
-      <Header isConnected={isConnected} />
+      <Header
+        isConnected={isConnected}
+        onDisasterDetectionClick={() => setIsDisasterMenuOpen(true)}
+      />
 
       {/* 2. Control Action Toolbar */}
       <ControlButtons

@@ -1,11 +1,12 @@
 import React from 'react';
-import { ShieldAlert, Server } from 'lucide-react';
+import { ShieldAlert, Server, Radar } from 'lucide-react';
 
 interface HeaderProps {
   isConnected: boolean;
+  onDisasterDetectionClick?: () => void;
 }
 
-export const Header: React.FC<HeaderProps> = ({ isConnected }) => {
+export const Header: React.FC<HeaderProps> = ({ isConnected, onDisasterDetectionClick }) => {
   const hostname = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : 'localhost';
 
   return (
@@ -25,7 +26,19 @@ export const Header: React.FC<HeaderProps> = ({ isConnected }) => {
       </div>
 
       <div className="flex items-center space-x-4">
-        <div className="flex items-center space-x-2 bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300">
+        {/* Disaster Detection Trigger Button */}
+        {onDisasterDetectionClick && (
+          <button
+            onClick={onDisasterDetectionClick}
+            className="flex items-center space-x-2 bg-gradient-to-r from-amber-600/20 via-orange-600/20 to-cyan-600/20 hover:from-amber-600/30 hover:to-cyan-600/30 text-amber-200 hover:text-white border border-amber-500/40 px-3.5 py-1.5 rounded-xl text-xs font-semibold shadow-sm transition-all duration-200 cursor-pointer active:scale-95"
+            aria-label="Open Disaster Detection Menu"
+          >
+            <Radar className="w-4 h-4 text-amber-400 animate-pulse" />
+            <span>Disaster Detection</span>
+          </button>
+        )}
+
+        <div className="hidden sm:flex items-center space-x-2 bg-slate-850 border border-slate-800 px-3 py-1.5 rounded-lg text-xs font-mono text-slate-300">
           <Server className="w-3.5 h-3.5 text-slate-400" />
           <span>Local Node: {hostname}:5001</span>
         </div>
