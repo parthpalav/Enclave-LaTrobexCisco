@@ -367,12 +367,12 @@
                 <!-- Digital Twin Radar Panel -->
                 <div class="panel">
                     <div class="panel-header">
-                        <div class="panel-title">🌐 Digital Twin Device Coverage View</div>
+                        <div class="panel-title">🌐 Digital Twin Mini Map</div>
                     </div>
                     <div class="digital-twin-container">
                         <canvas id="radarCanvas" width="300" height="300"></canvas>
                         <div style="font-size: 0.8rem; color: var(--text-muted); text-align: center;">
-                            Live multi-device coverage map. Positions are device-relative until venue mapping is available.
+                            Live continuous floor map with tracked people and movement direction.
                         </div>
                     </div>
                 </div>
@@ -400,78 +400,42 @@
 
         document.getElementById('cmdNotice').innerText = `python camera_node.py --server http://${window.location.hostname}:5000`;
 
-        function drawRadarGrid(avatars = [], camera_zones = {}) {
+        function drawRadarGrid(avatars = []) {
             ctx.fillStyle = '#060911';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-            // Draw base grid
-            ctx.strokeStyle = '#1e293b';
-            ctx.lineWidth = 1;
-            for (let x = 0; x < canvas.width; x += 30) {
-                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
-            }
-            for (let y = 0; y < canvas.height; y += 30) {
-                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
-            }
-
-            // Draw stable device coverage slots. These are not physical venue coordinates.
-            const zoneColors = ['rgba(0,210,255,0.18)', 'rgba(124,77,255,0.18)', 'rgba(0,230,118,0.18)', 'rgba(255,171,0,0.18)'];
-            const zoneBorder = ['#00d2ff', '#7c4dff', '#00e676', '#ffab00'];
-            let zi = 0;
-            for (const [cam_id, zone] of Object.entries(camera_zones)) {
-                const zx = zone.x * canvas.width;
-                const zy = zone.y * canvas.height;
-                const zw = zone.w * canvas.width;
-                const zh = zone.h * canvas.height;
-                ctx.fillStyle = zoneColors[zi % zoneColors.length];
-                ctx.fillRect(zx, zy, zw, zh);
-                ctx.strokeStyle = zoneBorder[zi % zoneBorder.length];
-                ctx.lineWidth = 1.5;
-                ctx.strokeRect(zx, zy, zw, zh);
-                ctx.fillStyle = zoneBorder[zi % zoneBorder.length];
-                ctx.font = 'bold 9px Inter';
-                ctx.fillText(zone.label || cam_id, zx + 5, zy + 13);
-                zi++;
-            }
-
-            // Rotating sweep line
-            const angle = (Date.now() / 20) % 360;
-            ctx.save();
-            ctx.translate(canvas.width/2, canvas.height/2);
-            ctx.rotate(angle * Math.PI / 180);
-            ctx.strokeStyle = 'rgba(0, 210, 255, 0.12)';
-            ctx.lineWidth = 1;
-            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, canvas.width); ctx.stroke();
-            ctx.restore();
-
-            // Draw camera-relative avatars within each device coverage slot.
             avatars.forEach(av => {
                 const tx = (av.twin_x ?? 0.5) * canvas.width;
                 const ty = (av.twin_y ?? 0.5) * canvas.height;
+                const hue = ((av.avatar_id || 1) * 47) % 360;
 
-                ctx.fillStyle = '#00e676';
-                ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI * 2); ctx.fill();
-                ctx.strokeStyle = '#00d2ff';
-                ctx.lineWidth = 1.5;
-                ctx.beginPath(); ctx.arc(tx, ty, 9, 0, Math.PI * 2); ctx.stroke();
-
-                // Velocity arrow
                 const vel = av.velocity_vector || [0, 0];
                 const speed = Math.hypot(vel[0], vel[1]);
-                if (speed > 0.3) {
-                    const ex = Math.min(Math.max(tx + vel[0] * 4, 3), canvas.width - 3);
-                    const ey = Math.min(Math.max(ty + vel[1] * 4, 3), canvas.height - 3);
+                if (speed > 0.05) {
+                    const scale = 7.0;
+                    const ex = Math.min(Math.max(tx + (vel[0] / 100) * canvas.width * scale, 3), canvas.width - 3);
+                    const ey = Math.min(Math.max(ty + (vel[1] / 100) * canvas.height * scale, 3), canvas.height - 3);
+                    const angle = Math.atan2(ey - ty, ex - tx);
+                    const head = 6;
                     ctx.strokeStyle = '#00ffff';
-                    ctx.lineWidth = 1.5;
+                    ctx.fillStyle = '#00ffff';
+                    ctx.lineWidth = 1.75;
                     ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(ex, ey); ctx.stroke();
+                    ctx.beginPath();
+                    ctx.moveTo(ex, ey);
+                    ctx.lineTo(ex - head * Math.cos(angle - Math.PI / 6), ey - head * Math.sin(angle - Math.PI / 6));
+                    ctx.lineTo(ex - head * Math.cos(angle + Math.PI / 6), ey - head * Math.sin(angle + Math.PI / 6));
+                    ctx.closePath();
+                    ctx.fill();
                 }
 
-                ctx.fillStyle = '#ffffff';
-                ctx.font = '9px Inter';
-                ctx.fillText(`#${av.avatar_id}`, tx + 11, ty + 4);
+                ctx.fillStyle = `hsl(${hue}, 85%, 58%)`;
+                ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI * 2); ctx.fill();
+                ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+                ctx.lineWidth = 1.25;
+                ctx.beginPath(); ctx.arc(tx, ty, 8, 0, Math.PI * 2); ctx.stroke();
             });
 
-            // Outer border
             ctx.strokeStyle = 'rgba(0,210,255,0.4)';
             ctx.lineWidth = 1;
             ctx.strokeRect(0, 0, canvas.width - 1, canvas.height - 1);
@@ -491,7 +455,7 @@
                 document.getElementById('pred60s').innerText = `~${preds['60s'] || 0} Ppl`;
                 document.getElementById('pred120s').innerText = `~${preds['120s'] || 0} Ppl`;
 
-                drawRadarGrid(data.digital_twin_avatars || [], data.camera_zones || {});
+                drawRadarGrid(data.digital_twin_avatars || []);
 
                 // Dynamically append new camera streams without breaking existing video tags
                 if (data.cameras && data.cameras.length > 0) {

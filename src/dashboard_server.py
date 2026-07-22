@@ -19,9 +19,9 @@ def generate_camera_stream(camera_id: str):
     while True:
         if camera_id in camera_manager.workers:
             worker = camera_manager.workers[camera_id]
-            frame, _ = worker.get_latest_data()
+            frame = worker.get_stream_frame()
             if frame is not None:
-                ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 80])
+                ret, buffer = cv2.imencode('.jpg', frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
                 if ret:
                     frame_bytes = buffer.tobytes()
                     yield (b'--frame\r\n'
@@ -63,6 +63,10 @@ def stream_upload():
     frame = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
     if frame is not None:
+        h, w = frame.shape[:2]
+        if w > 720:
+            scale = 720.0 / float(w)
+            frame = cv2.resize(frame, (720, max(1, int(h * scale))), interpolation=cv2.INTER_AREA)
         accepted = camera_manager.push_laptop_frame(camera_id, frame, name=device_name or None)
         if not accepted:
             return jsonify({"error": "maximum of four CCTV devices reached", "camera_id": camera_id}), 409
@@ -74,6 +78,13 @@ def stream_upload():
 def get_analytics():
     data = camera_manager.get_global_analytics()
     return jsonify(data)
+
+@app.route('/api/alarm_event')
+def get_alarm_event():
+    data = camera_manager.get_global_analytics()
+    if data.get("stampede_event") == "STAMPEDE_A":
+        return Response("STAMPEDE_A", mimetype="text/plain")
+    return Response("", status=204, mimetype="text/plain")
 
 @app.route('/api/heartbeat', methods=['POST'])
 def heartbeat():

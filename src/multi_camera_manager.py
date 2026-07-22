@@ -76,6 +76,12 @@ def deduplicate_global_tracks(all_camera_tracks: List[Dict], cam_zones: Dict[str
 # Add more zones here as you connect more cameras/phones.
 # ─────────────────────────────────────────────────────────────────
 MAX_CCTV_DEVICES = 4
+PRIMARY_CAMERA_ID = "cam_1"
+STAMPEDE_RISK_THRESHOLD = 0.60
+STAMPEDE_PREDICTED_INCREASE = 5
+STAMPEDE_HEADCOUNT_THRESHOLD = 2
+GLOBAL_DUPLICATE_DISTANCE = 0.08
+GLOBAL_REID_THRESHOLD = 0.75
 _DEVICE_SLOTS = [
     {"slot": "A", "label": "Camera A", "x": 0.0, "y": 0.0, "w": 0.5, "h": 0.5},
     {"slot": "B", "label": "Camera B", "x": 0.5, "y": 0.0, "w": 0.5, "h": 0.5},
@@ -140,6 +146,35 @@ def zones_overlap(z1: dict, z2: dict) -> bool:
     """Returns True if two zone rects share any area (AABB intersection test)."""
     return (z1["x"] < z2["x"] + z2["w"] and z1["x"] + z1["w"] > z2["x"] and
             z1["y"] < z2["y"] + z2["h"] and z1["y"] + z1["h"] > z2["y"])
+
+
+def merge_duplicate_avatars(avatars: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Collapse obvious duplicate people from overlapping cameras into one twin entity."""
+    merged: List[Dict[str, Any]] = []
+    for avatar in avatars:
+        duplicate_of = None
+        for existing in merged:
+            if avatar.get("camera_id") == existing.get("camera_id"):
+                continue
+            z1, z2 = avatar.get("zone"), existing.get("zone")
+            dx = float(avatar.get("twin_x", 0.0)) - float(existing.get("twin_x", 0.0))
+            dy = float(avatar.get("twin_y", 0.0)) - float(existing.get("twin_y", 0.0))
+            distance = float(np.hypot(dx, dy))
+            looks_same = cosine_similarity(avatar.get("appearance", []), existing.get("appearance", [])) >= GLOBAL_REID_THRESHOLD
+            spatially_same = distance <= GLOBAL_DUPLICATE_DISTANCE
+            if (z1 and z2 and zones_overlap(z1, z2) and looks_same) or spatially_same:
+                duplicate_of = existing
+                break
+        if duplicate_of is not None:
+            avatar["avatar_id"] = duplicate_of.get("avatar_id", avatar.get("avatar_id"))
+            duplicate_of.setdefault("source_cameras", [duplicate_of.get("camera_id")])
+            if avatar.get("camera_id") not in duplicate_of["source_cameras"]:
+                duplicate_of["source_cameras"].append(avatar.get("camera_id"))
+            duplicate_of["merged_duplicate_count"] = duplicate_of.get("merged_duplicate_count", 0) + 1
+        else:
+            avatar["source_cameras"] = [avatar.get("camera_id")]
+            merged.append(avatar)
+    return merged
 
 
 class GlobalIDRegistry:
@@ -213,7 +248,7 @@ class CameraWorker(threading.Thread):
         self.zone = get_or_assign_zone(camera_id)
 
         self.running = False
-        self.frame_queue = queue.Queue(maxsize=5)
+        self.frame_queue = queue.Queue(maxsize=1)
         self.latest_raw_frame: Optional[np.ndarray] = None
         self.latest_rendered_frame: Optional[np.ndarray] = None
         self.latest_contract: Dict[str, Any] = {}
@@ -235,12 +270,13 @@ class CameraWorker(threading.Thread):
             self.last_frame_time = now
             self.frames_received += 1
             self.frame_arrival_times.append(now)
-            if self.frame_queue.full():
+            self.latest_raw_frame = frame
+            while not self.frame_queue.empty():
                 try:
                     self.frame_queue.get_nowait()
                     self.frames_dropped += 1
                 except queue.Empty:
-                    pass
+                    break
             self.frame_queue.put(frame)
 
     def run(self):
@@ -302,6 +338,14 @@ class CameraWorker(threading.Thread):
     def get_latest_data(self) -> Tuple[Optional[np.ndarray], Dict[str, Any]]:
         with self.lock:
             return self.latest_rendered_frame, self.latest_contract.copy()
+
+    def get_stream_frame(self) -> Optional[np.ndarray]:
+        with self.lock:
+            if self.is_push_stream and self.latest_raw_frame is not None:
+                return self.latest_raw_frame.copy()
+            if self.latest_rendered_frame is not None:
+                return self.latest_rendered_frame.copy()
+            return self.latest_raw_frame.copy() if self.latest_raw_frame is not None else None
 
     @staticmethod
     def _rate(timestamps: deque) -> float:
@@ -425,6 +469,8 @@ class MultiCameraManager:
         camera_summaries = []
         all_tracks_global: List[Dict] = []
         active_tracks_by_cam: Dict[str, List[int]] = {}
+        camera_headcounts: Dict[str, int] = {}
+        camera_avatar_counts: Dict[str, int] = {}
 
         with self.lock:
             workers_snapshot = list(self.workers.items())
@@ -433,6 +479,7 @@ class MultiCameraManager:
             _, contract = worker.get_latest_data()
 
             hc = contract.get("headcount", 0) if contract else 0
+            camera_headcounts[cam_id] = hc
             c_risk = contract.get("risk_score_current", 0.0) if contract else 0.0
             max_risk = max(max_risk, c_risk)
 
@@ -447,6 +494,7 @@ class MultiCameraManager:
 
             if contract:
                 tracks = contract.get("tracks", [])
+                tracks_by_id = {t.get("track_id"): t for t in tracks}
                 # Build active local track IDs for global ID registry
                 active_tracks_by_cam[cam_id] = [t["track_id"] for t in tracks if t.get("track_id", -1) > 0]
 
@@ -461,26 +509,23 @@ class MultiCameraManager:
 
                 dt_state = contract.get("digital_twin_state", {})
                 avatars = dt_state.get("avatars", [])
+                camera_avatar_counts[cam_id] = len(avatars)
                 for av in avatars:
-                    # position_twin_xz is global for calibrated cameras, camera-local otherwise.
+                    # position_twin_xz is the display coordinate used by the mini-map.
                     xz = av.get("position_twin_xz", [50.0, 50.0])
                     norm_x = xz[0] / 100.0   # 0.0 – 1.0 within camera frame
                     norm_y = xz[1] / 100.0
 
                     av["camera_id"] = cam_id
                     av["zone"] = zone
-                    if (
-                        dt_state.get("homography_calibrated")
-                        or av.get("homography_calibrated")
-                        or av.get("calibrated_homography")
-                    ):
-                        # Calibrated cameras already emit global floor-plane coordinates.
-                        av["twin_x"] = round(norm_x, 4)
-                        av["twin_y"] = round(norm_y, 4)
-                    else:
-                        # Temporary fallback for devices that do not yet have a venue transform.
-                        av["twin_x"] = round(zone["x"] + norm_x * zone["w"], 4)
-                        av["twin_y"] = round(zone["y"] + norm_y * zone["h"], 4)
+                    track_info = tracks_by_id.get(av.get("avatar_id"), {})
+                    av["local_track_id"] = av.get("avatar_id")
+                    av["appearance"] = track_info.get("appearance", [])
+                    av["twin_x"] = round(zone["x"] + min(max(norm_x, 0.0), 1.0) * zone["w"], 4)
+                    av["twin_y"] = round(zone["y"] + min(max(norm_y, 0.0), 1.0) * zone["h"], 4)
+                    vel = av.get("velocity_vector", [0.0, 0.0])
+                    if len(vel) == 2:
+                        av["velocity_vector"] = [round(vel[0] * zone["w"], 2), round(vel[1] * zone["h"], 2)]
                     all_avatars.append(av)
 
             camera_summaries.append({
@@ -504,29 +549,29 @@ class MultiCameraManager:
 
         # Cross-camera Re-ID dedup — only between cameras whose zones actually overlap
         # Non-overlapping zones by definition cannot have the same person simultaneously
-        if len(workers_snapshot) > 1 and all_tracks_global:
-            # Build overlap pairs
-            cam_zones = {c["camera_id"]: c["zone"] for c in camera_summaries}
-            cam_ids = list(cam_zones.keys())
-            has_any_overlap = any(
-                zones_overlap(cam_zones[cam_ids[i]], cam_zones[cam_ids[j]])
-                for i in range(len(cam_ids))
-                for j in range(i + 1, len(cam_ids))
-            )
-            if has_any_overlap:
-                # Only pass tracks from overlapping camera pairs into dedup
-                unique_headcount = deduplicate_global_tracks(all_tracks_global, cam_zones)
-            else:
-                # Non-overlapping zones: simple sum is exact and correct
-                unique_headcount = sum(c["headcount"] for c in camera_summaries)
-        else:
-            unique_headcount = sum(c["headcount"] for c in camera_summaries)
+        authoritative_camera_id = "global_zone_fusion" if all_avatars else ""
+        display_avatars = merge_duplicate_avatars(all_avatars)
+        unique_headcount = len(display_avatars) if display_avatars else sum(c["headcount"] for c in camera_summaries)
 
         alerts = []
-        if max_risk > 0.60:
-            alerts.append({"level": "CRITICAL", "message": f"High stampede risk detected (Risk Score: {max_risk:.2f})!"})
-        if predicted_120s > unique_headcount + 5 and unique_headcount > 0:
-            alerts.append({"level": "WARNING", "message": f"Inflow increase predicted in 120s (~{predicted_120s} people expected)!"})
+        predicted_peak = max(predicted_30s, predicted_60s, predicted_120s)
+        if unique_headcount >= STAMPEDE_HEADCOUNT_THRESHOLD:
+            alerts.append({
+                "level": "CRITICAL",
+                "message": "STAMPEDE_A"
+            })
+        elif predicted_peak >= STAMPEDE_HEADCOUNT_THRESHOLD:
+            alerts.append({
+                "level": "CRITICAL",
+                "message": "STAMPEDE_A"
+            })
+        if max_risk > STAMPEDE_RISK_THRESHOLD:
+            alerts.append({"level": "CRITICAL", "message": "STAMPEDE_A"})
+        if predicted_120s > unique_headcount + STAMPEDE_PREDICTED_INCREASE and unique_headcount > 0:
+            alerts.append({"level": "WARNING", "message": "STAMPEDE_A"})
+        stampede_event = None
+        if alerts:
+            stampede_event = "STAMPEDE_A"
 
         return {
             "global_headcount": unique_headcount,
@@ -538,10 +583,13 @@ class MultiCameraManager:
             },
             "active_cameras_count": len(workers_snapshot),
             "maximum_cameras": MAX_CCTV_DEVICES,
-            "twin_mode": "coverage_grid",
+            "twin_mode": "zone_based_global_floor",
+            "headcount_mode": "zone_sum_with_overlap_reid",
+            "authoritative_camera_id": authoritative_camera_id,
             "cameras": camera_summaries,
-            "digital_twin_avatars": all_avatars,
+            "digital_twin_avatars": display_avatars,
             "alerts": alerts,
+            "stampede_event": stampede_event,
             "camera_zones": CAMERA_ZONES
         }
 

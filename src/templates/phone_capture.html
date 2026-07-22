@@ -149,8 +149,10 @@
     let facingMode = 'environment';  // rear camera by default
     let frameCount = 0, errCount = 0;
     let fpsCounter = 0, lastFpsTime = Date.now();
-    const TARGET_FPS  = 12;
-    const QUALITY     = 0.65;   // JPEG quality 0-1
+    const TARGET_FPS  = 6;
+    const QUALITY     = 0.55;   // JPEG quality 0-1
+    const MAX_WIDTH   = 720;
+    let uploadInFlight = false;
 
     function setStatus(msg, cls='') {
       statusEl.innerHTML = `<span class="${cls}">${msg}</span>`;
@@ -159,7 +161,12 @@
     async function openCamera() {
       if (stream) stream.getTracks().forEach(t => t.stop());
       const constraints = {
-        video: { facingMode, width: { ideal: 1280 }, height: { ideal: 720 } },
+        video: {
+          facingMode,
+          width: { ideal: 720 },
+          height: { ideal: 480 },
+          frameRate: { ideal: TARGET_FPS, max: 10 }
+        },
         audio: false
       };
       stream = await navigator.mediaDevices.getUserMedia(constraints);
@@ -169,12 +176,20 @@
 
     async function sendFrame() {
       if (!stream) return;
-      canvas.width  = video.videoWidth  || 640;
-      canvas.height = video.videoHeight || 480;
-      ctx.drawImage(video, 0, 0);
+      if (uploadInFlight) return;
+      const srcW = video.videoWidth || 640;
+      const srcH = video.videoHeight || 480;
+      const scale = Math.min(1, MAX_WIDTH / srcW);
+      canvas.width  = Math.round(srcW * scale);
+      canvas.height = Math.round(srcH * scale);
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      uploadInFlight = true;
 
       canvas.toBlob(async (blob) => {
-        if (!blob) return;
+        if (!blob) {
+          uploadInFlight = false;
+          return;
+        }
         const camId = camIdEl.value.trim() || 'phone_1';
         const fd = new FormData();
         fd.append('frame', blob, 'frame.jpg');
@@ -203,6 +218,7 @@
           fpsCounter = 0;
           lastFpsTime = now;
         }
+        uploadInFlight = false;
       }, 'image/jpeg', QUALITY);
     }
 

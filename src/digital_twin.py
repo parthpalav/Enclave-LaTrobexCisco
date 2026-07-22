@@ -7,7 +7,7 @@ class DigitalTwinEngine:
     """
     Digital Twin Simulation & Spatial Radar Engine.
     Maps 2D camera perception into a top-down virtual floor plane (Digital Twin),
-    rendering real-time digital avatar nodes, velocity trajectories, risk zones,
+    rendering real-time digital avatar nodes, velocity trajectories,
     and projected future positions (30s, 60s, 120s horizons).
     """
     def __init__(self, twin_width: int = 320, twin_height: int = 320, grid_rows: int = 20, grid_cols: int = 20):
@@ -29,49 +29,20 @@ class DigitalTwinEngine:
         Renders top-down 2D Digital Twin Radar View.
         """
         H_cam, W_cam = frame_shape
-        canvas = np.full((self.twin_height, self.twin_width, 3), (25, 25, 30), dtype=np.uint8)
-
-        # Draw floor grid lines
-        grid_step = self.twin_width // 10
-        for x in range(0, self.twin_width, grid_step):
-            cv2.line(canvas, (x, 0), (x, self.twin_height), (45, 45, 55), 1)
-        for y in range(0, self.twin_height, grid_step):
-            cv2.line(canvas, (0, y), (self.twin_width, y), (45, 45, 55), 1)
-
-        # Title
-        cv2.putText(canvas, "DIGITAL TWIN (Overhead Space)", (10, 22), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (0, 255, 255), 1, cv2.LINE_AA)
-
-        # Render Divergence Heatmap Risk Zones on Digital Twin Space
-        conv_map = np.maximum(0.0, -divergence_map)
-        if np.max(conv_map) > 0.02:
-            norm_conv = (conv_map / (np.max(conv_map) + 1e-5) * 255).astype(np.uint8)
-            heat_twin = cv2.applyColorMap(cv2.resize(norm_conv, (self.twin_width, self.twin_height)), cv2.COLORMAP_JET)
-            canvas = cv2.addWeighted(canvas, 0.75, heat_twin, 0.25, 0)
+        canvas = np.full((self.twin_height, self.twin_width, 3), (8, 12, 20), dtype=np.uint8)
 
         # Map tracked persons into Digital Twin Overhead Coordinates
         for t in tracks:
             tid = t["track_id"]
             cx, cy = t["center_xy"]
 
-            # Use the calibrated ground-contact point when available. The
-            # fallback keeps uncalibrated devices usable until configured.
-            bbox = t.get("bbox", [cx, cy, 0, 0])
-            feet_x = cx
-            feet_y = float(bbox[1] + bbox[3]) if len(bbox) == 4 else cy
-            projected = calibrator.transform_point(camera_id, feet_x, feet_y) if camera_id else None
-            if projected is not None:
-                tx = int(min(max(projected[0] * self.twin_width, 10), self.twin_width - 10))
-                tz = int(min(max(projected[1] * self.twin_height, 10), self.twin_height - 10))
-            else:
-                tx = int(min(max((cx / W_cam) * self.twin_width, 10), self.twin_width - 10))
-                tz = int(min(max((cy / H_cam) * self.twin_height, 10), self.twin_height - 10))
+            tx = int(min(max((cx / W_cam) * self.twin_width, 10), self.twin_width - 10))
+            tz = int(min(max((cy / H_cam) * self.twin_height, 10), self.twin_height - 10))
 
-            # Fetch velocity for predictive trajectory projection
+            # Match the camera overlay arrow direction in the mini-map.
             vx, vy = track_velocities.get(tid, (0.0, 0.0))
-            projected_velocity = calibrator.transform_velocity(camera_id, feet_x, feet_y, vx, vy) if projected is not None else None
-            if projected_velocity is not None:
-                vx = projected_velocity[0] * self.twin_width
-                vy = projected_velocity[1] * self.twin_height
+            vx = (vx / W_cam) * self.twin_width
+            vy = (vy / H_cam) * self.twin_height
 
             # Avatar color tied to track ID
             color_hue = (tid * 47) % 180
@@ -93,12 +64,6 @@ class DigitalTwinEngine:
                 cv2.arrowedLine(canvas, (tx, tz), (pred_tx, pred_tz), (0, 255, 255), 2, cv2.LINE_AA, 0, 0.3)
                 cv2.circle(canvas, (pred_tx, pred_tz), 3, (255, 255, 0), -1, cv2.LINE_AA)
 
-            # ID label
-            cv2.putText(canvas, f"ID:{tid}", (tx + 10, tz + 4), cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
-
-        # Outer border
-        cv2.rectangle(canvas, (0, 0), (self.twin_width - 1, self.twin_height - 1), (0, 255, 255), 1)
-
         return canvas
 
     def get_digital_twin_state(
@@ -117,25 +82,29 @@ class DigitalTwinEngine:
             tid = t["track_id"]
             cx, cy = t["center_xy"]
             vx, vy = track_velocities.get(tid, (0.0, 0.0))
+            screen_vx = (vx / W_cam) * 100.0
+            screen_vy = (vy / H_cam) * 100.0
             bbox = t.get("bbox", [cx, cy, 0, 0])
             feet_x = cx
             feet_y = float(bbox[1] + bbox[3]) if len(bbox) == 4 else cy
             projected = calibrator.transform_point(camera_id, feet_x, feet_y) if camera_id else None
             projected_velocity = calibrator.transform_velocity(camera_id, feet_x, feet_y, vx, vy) if camera_id else None
-            if projected is None:
-                tx = round((cx / W_cam) * 100.0, 2)
-                tz = round((cy / H_cam) * 100.0, 2)
-            else:
-                tx = round(projected[0] * 100.0, 2)
-                tz = round(projected[1] * 100.0, 2)
+            floor_vx, floor_vy = screen_vx, screen_vy
+            tx = round((cx / W_cam) * 100.0, 2)
+            tz = round((cy / H_cam) * 100.0, 2)
+            floor_position = [tx, tz]
+            if projected is not None:
+                floor_position = [round(projected[0] * 100.0, 2), round(projected[1] * 100.0, 2)]
                 if projected_velocity is not None:
-                    vx, vy = projected_velocity
+                    floor_vx, floor_vy = projected_velocity[0] * 100.0, projected_velocity[1] * 100.0
 
             avatars.append({
                 "avatar_id": tid,
                 "position_twin_xz": [tx, tz],
-                "velocity_vector": [round(vx, 2), round(vy, 2)],
-                "predicted_position_500ms": [round(tx + vx * 0.5, 2), round(tz + vy * 0.5, 2)],
+                "floor_position_twin_xz": floor_position,
+                "velocity_vector": [round(screen_vx, 2), round(screen_vy, 2)],
+                "floor_velocity_vector": [round(floor_vx, 2), round(floor_vy, 2)],
+                "predicted_position_500ms": [round(tx + screen_vx * 0.5, 2), round(tz + screen_vy * 0.5, 2)],
                 "homography_calibrated": projected is not None,
                 "calibrated_homography": projected is not None,
             })
