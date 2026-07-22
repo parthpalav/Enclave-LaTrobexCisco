@@ -230,7 +230,7 @@ class CameraWorker(threading.Thread):
                     if str(self.source).isdigit():
                         frame = cv2.flip(frame, 1)
 
-                contract_output, rendered_frame = self.pipeline.process_frame(frame)
+                contract_output, rendered_frame = self.pipeline.process_frame(frame, camera_id=self.camera_id)
 
                 # Inject zone info into the contract so the digital twin knows where to plot
                 if contract_output and "digital_twin_state" in contract_output:
@@ -383,16 +383,20 @@ class MultiCameraManager:
                 dt_state = contract.get("digital_twin_state", {})
                 avatars = dt_state.get("avatars", [])
                 for av in avatars:
-                    # FIX: use position_twin_xz (0-100 scale) for accurate zone mapping
                     xz = av.get("position_twin_xz", [50.0, 50.0])
-                    norm_x = xz[0] / 100.0   # 0.0 – 1.0 within camera frame
+                    norm_x = xz[0] / 100.0   # 0.0 – 1.0 scale
                     norm_y = xz[1] / 100.0
 
                     av["camera_id"] = cam_id
                     av["zone"] = zone
-                    # Map normalised camera position into global floor plan zone
-                    av["twin_x"] = round(zone["x"] + norm_x * zone["w"], 4)
-                    av["twin_y"] = round(zone["y"] + norm_y * zone["h"], 4)
+                    if av.get("calibrated_homography"):
+                        # Direct continuous ground plan coordinates
+                        av["twin_x"] = round(norm_x, 4)
+                        av["twin_y"] = round(norm_y, 4)
+                    else:
+                        # Fallback to uncalibrated tile zone offset
+                        av["twin_x"] = round(zone["x"] + norm_x * zone["w"], 4)
+                        av["twin_y"] = round(zone["y"] + norm_y * zone["h"], 4)
                     all_avatars.append(av)
 
             camera_summaries.append({

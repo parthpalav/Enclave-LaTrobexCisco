@@ -1,6 +1,7 @@
 import cv2
 import numpy as np
-from typing import List, Dict, Any, Tuple
+from typing import List, Dict, Any, Tuple, Optional
+from homography import calibrator
 
 class DigitalTwinEngine:
     """
@@ -87,29 +88,55 @@ class DigitalTwinEngine:
 
         return canvas
 
-    def get_digital_twin_state(self, tracks: List[Dict[str, Any]], track_velocities: Dict[int, Tuple[float, float]], frame_shape: Tuple[int, int]) -> Dict[str, Any]:
+    def get_digital_twin_state(self, tracks: List[Dict[str, Any]], track_velocities: Dict[int, Tuple[float, float]], frame_shape: Tuple[int, int], camera_id: Optional[str] = None) -> Dict[str, Any]:
         """
         Exports structured digital twin state payload (for simulation/web API/dashboard).
+        If camera_id has a 4-point homography calibration, uses true perspective ground projection.
         """
         H_cam, W_cam = frame_shape
         avatars = []
+        is_homography_active = False
+
+        if camera_id and calibrator.is_calibrated(camera_id):
+            is_homography_active = True
+
         for t in tracks:
             tid = t["track_id"]
             cx, cy = t["center_xy"]
+            bbox = t.get("bbox", [0, 0, 0, 0])
+            # Feet position (bottom center of bounding box) is physically on the ground plane
+            feet_x = cx
+            feet_y = bbox[1] + bbox[3] if len(bbox) == 4 else cy
+
             vx, vy = track_velocities.get(tid, (0.0, 0.0))
 
-            tx = round((cx / W_cam) * 100.0, 2)  # Normalized percentage floor X
-            tz = round((cy / H_cam) * 100.0, 2)  # Normalized percentage floor Z
+            if is_homography_active and camera_id:
+                ground_pt = calibrator.transform_point(camera_id, feet_x, feet_y)
+                ground_vel = calibrator.transform_velocity(camera_id, feet_x, feet_y, vx, vy)
+                if ground_pt is not None:
+                    # Ground coords in percentage [0-100]
+                    tx = round(ground_pt[0] * 100.0, 2)
+                    tz = round(ground_pt[1] * 100.0, 2)
+                    if ground_vel is not None:
+                        vx, vy = ground_vel[0] * 100.0, ground_vel[1] * 100.0
+                else:
+                    tx = round((cx / W_cam) * 100.0, 2)
+                    tz = round((cy / H_cam) * 100.0, 2)
+            else:
+                tx = round((cx / W_cam) * 100.0, 2)
+                tz = round((cy / H_cam) * 100.0, 2)
 
             avatars.append({
                 "avatar_id": tid,
                 "position_twin_xz": [tx, tz],
                 "velocity_vector": [round(vx, 2), round(vy, 2)],
-                "predicted_position_500ms": [round(tx + vx * 0.5, 2), round(tz + vy * 0.5, 2)]
+                "predicted_position_500ms": [round(tx + vx * 0.5, 2), round(tz + vy * 0.5, 2)],
+                "calibrated_homography": is_homography_active
             })
 
         return {
             "entity": "CrowdDigitalTwinSpace",
             "active_avatars_count": len(avatars),
-            "avatars": avatars
+            "avatars": avatars,
+            "homography_calibrated": is_homography_active
         }

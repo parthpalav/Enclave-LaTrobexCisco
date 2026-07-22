@@ -495,7 +495,10 @@
                             box.innerHTML = `
                                 <div class="camera-box-header">
                                     <span>${c.name}</span>
-                                    <span style="color: var(--accent-green);">LIVE</span>
+                                    <div>
+                                        <a href="/calibrate/${c.camera_id}" target="_blank" style="color: var(--accent-blue); text-decoration: none; font-size: 0.75rem; margin-right: 10px; background: rgba(0,210,255,0.1); padding: 2px 8px; border-radius: 4px;">📐 Calibrate</a>
+                                        <span style="color: var(--accent-green);">LIVE</span>
+                                    </div>
                                 </div>
                                 <img src="/video_feed/${c.camera_id}" class="camera-img" alt="${c.name} Stream">
                             `;

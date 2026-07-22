@@ -36,7 +36,7 @@ class CrowdFlowPipeline:
         self.fps_history = []
         self.last_timestamp = time.time()
 
-    def process_frame(self, frame: np.ndarray) -> Tuple[Dict[str, Any], np.ndarray]:
+    def process_frame(self, frame: np.ndarray, camera_id: Optional[str] = None) -> Tuple[Dict[str, Any], np.ndarray]:
         """
         Process single frame (BGR image array).
         Returns:
@@ -105,7 +105,8 @@ class CrowdFlowPipeline:
         digital_twin_payload = self.digital_twin.get_digital_twin_state(
             tracks=tracks,
             track_velocities=self.tracker.track_velocities,
-            frame_shape=(H, W)
+            frame_shape=(H, W),
+            camera_id=camera_id
         )
 
         # Build Output Contract Object strictly conforming to specification + digital twin bonus payload
