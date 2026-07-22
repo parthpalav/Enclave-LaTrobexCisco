@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { AlertOctagon, Flame, Navigation } from 'lucide-react';
+import { AlertOctagon, Flame, Navigation, Cross } from 'lucide-react';
 import type { EmergencyPayload } from '../hooks/useSocket';
 
 interface EmergencyScreenProps {
@@ -57,6 +57,11 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
     window.open(mapsUrl, '_blank', 'noopener,noreferrer');
   };
 
+  const handleOpenHospital = () => {
+    const hospitalUrl = 'https://www.google.com/search?q=hospital+near+me&oq=hospital+near+me';
+    window.open(hospitalUrl, '_blank', 'noopener,noreferrer');
+  };
+
   const formattedTime = payload?.timestamp
     ? new Date(payload.timestamp).toLocaleTimeString()
     : new Date().toLocaleTimeString();
@@ -73,24 +78,24 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
 
       {/* Center Evacuation Message */}
       <main className="flex-1 flex flex-col items-center justify-center text-center px-3 my-auto py-4 space-y-4">
-        <div className="w-20 h-20 rounded-full bg-red-900/80 border-2 border-red-400 flex items-center justify-center shadow-2xl shadow-red-900 shrink-0">
-          <Flame className="w-11 h-11 text-red-200 animate-ping" />
+        <div className="w-16 h-16 rounded-full bg-red-900/80 border-2 border-red-400 flex items-center justify-center shadow-2xl shadow-red-900 shrink-0">
+          <Flame className="w-9 h-9 text-red-200 animate-ping" />
         </div>
 
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <h2 className="text-2xl font-black tracking-tight text-red-100 leading-tight">
             Overcrowding Detected
           </h2>
-          <p className="text-lg font-bold text-white max-w-sm leading-snug">
+          <p className="text-base font-bold text-white max-w-sm leading-snug">
             Please evacuate calmly. Proceed to the nearest exit.
           </p>
-          <p className="text-sm text-red-200 font-medium max-w-xs">
+          <p className="text-xs text-red-200 font-medium max-w-xs">
             Follow instructions from emergency personnel.
           </p>
         </div>
 
         {/* Safety Directives */}
-        <div className="bg-red-900/70 border border-red-500/50 p-3 rounded-2xl max-w-xs w-full shadow-inner space-y-0.5">
+        <div className="bg-red-900/70 border border-red-500/50 p-2.5 rounded-2xl max-w-xs w-full shadow-inner space-y-0.5">
           <p className="text-xs font-black text-red-100 uppercase tracking-widest">
             Do not run. Do not push.
           </p>
@@ -100,31 +105,39 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
         </div>
 
         {/* Divider */}
-        <div className="w-full max-w-xs border-t border-red-500/40 my-2" />
+        <div className="w-full max-w-xs border-t border-red-500/40 my-1" />
 
-        {/* Safe Evacuation Route Section */}
-        <div className="w-full max-w-xs flex flex-col items-center space-y-2">
+        {/* Evacuation & Medical Navigation Actions */}
+        <div className="w-full max-w-xs flex flex-col items-center space-y-2.5">
           <div className="flex items-center space-x-1.5 text-white">
             <Navigation className="w-4 h-4 text-white" />
-            <h3 className="text-sm font-bold tracking-wide">Safe Evacuation Route</h3>
+            <h3 className="text-sm font-bold tracking-wide">Safe Evacuation & Medical Help</h3>
           </div>
-          <p className="text-xs text-red-200 px-2 leading-tight">
-            Tap below to begin navigation to the designated safe evacuation point.
-          </p>
 
+          {/* Open Safe Evacuation Route Button */}
           <button
             onClick={handleOpenMap}
-            className="w-full py-3.5 px-4 bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-sm rounded-2xl shadow-2xl border border-red-200 transition-all duration-150 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2"
+            className="w-full py-3 px-4 bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-sm rounded-2xl shadow-2xl border border-red-200 transition-all duration-150 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2"
             aria-label="Open Google Maps navigation to the safe evacuation point"
           >
             <span>🗺️</span>
             <span>Open Safe Route in Google Maps</span>
           </button>
+
+          {/* Find Medical Help Button */}
+          <button
+            onClick={handleOpenHospital}
+            className="w-full py-3 px-4 bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-sm rounded-2xl shadow-2xl border border-red-200 transition-all duration-150 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2"
+            aria-label="Search for nearby hospitals and medical assistance"
+          >
+            <Cross className="w-4 h-4 text-red-600 fill-red-600 shrink-0" />
+            <span>Find Medical Help</span>
+          </button>
         </div>
       </main>
 
       {/* Footer Timestamp */}
-      <footer className="text-center bg-red-900/50 py-2.5 rounded-xl border border-red-800 shrink-0">
+      <footer className="text-center bg-red-900/50 py-2 rounded-xl border border-red-800 shrink-0">
         <p className="text-xs font-mono text-red-200">
           Time of Broadcast: <span className="font-bold text-white">{formattedTime}</span>
         </p>
