@@ -1,0 +1,24 @@
+# Virtual Environments
+.venv/
+env/
+venv/
+
+# Python Cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Local JSON contracts & outputs
+digital_twin_contract.json
+output_test.json
+*.log
+
+# YOLO weights & runs
+yolov8s.pt
+runs/
+
+# IDE files
+.vscode/
+.idea/

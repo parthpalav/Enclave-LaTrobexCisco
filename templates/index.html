@@ -1,0 +1,494 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>City CCTV Crowd Flow & Digital Twin Control Room</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg-dark: #0b0f19;
+            --panel-bg: #131b2e;
+            --accent-blue: #00d2ff;
+            --accent-green: #00e676;
+            --accent-warning: #ffab00;
+            --accent-red: #ff1744;
+            --text-main: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border-color: #1e293b;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        header {
+            background: rgba(19, 27, 46, 0.95);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+        }
+
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .brand-logo {
+            width: 14px;
+            height: 14px;
+            background: var(--accent-blue);
+            border-radius: 50%;
+            box-shadow: 0 0 12px var(--accent-blue);
+        }
+
+        .brand-title {
+            font-size: 1.25rem;
+            font-weight: 800;
+            letter-spacing: 0.5px;
+            background: linear-gradient(135deg, #ffffff, var(--accent-blue));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-badge {
+            background: rgba(0, 230, 118, 0.15);
+            color: var(--accent-green);
+            border: 1px solid var(--accent-green);
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pulse-dot {
+            width: 8px;
+            height: 8px;
+            background: var(--accent-green);
+            border-radius: 50%;
+            animation: pulse 1.5s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 8px rgba(0, 230, 118, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(0, 230, 118, 0); }
+        }
+
+        .dashboard-container {
+            padding: 25px 30px;
+            display: flex;
+            flex-direction: column;
+            gap: 25px;
+            flex: 1;
+        }
+
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 18px;
+        }
+
+        .metric-card {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 4px;
+            height: 100%;
+            background: var(--accent-blue);
+        }
+
+        .metric-card.warning::before { background: var(--accent-warning); }
+        .metric-card.critical::before { background: var(--accent-red); }
+
+        .metric-label {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+
+        .metric-value {
+            font-size: 2rem;
+            font-weight: 800;
+            font-family: 'JetBrains Mono', monospace;
+        }
+
+        .metric-sub {
+            font-size: 0.8rem;
+            color: var(--accent-blue);
+        }
+
+        .workspace-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 25px;
+        }
+
+        @media (max-width: 1200px) {
+            .workspace-grid { grid-template-columns: 1fr; }
+        }
+
+        .panel {
+            background: var(--panel-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 14px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .panel-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid var(--border-color);
+            padding-bottom: 12px;
+        }
+
+        .panel-title {
+            font-size: 1rem;
+            font-weight: 700;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .camera-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(340px, 1fr));
+            gap: 16px;
+        }
+
+        .camera-box {
+            background: #080c14;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            overflow: hidden;
+            position: relative;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .camera-box-header {
+            background: rgba(15, 23, 42, 0.8);
+            padding: 8px 12px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .camera-img {
+            width: 100%;
+            height: auto;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            background: #000;
+        }
+
+        .digital-twin-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 15px;
+        }
+
+        #radarCanvas {
+            background: #060911;
+            border: 1px solid var(--accent-blue);
+            border-radius: 10px;
+            width: 100%;
+            max-width: 320px;
+            aspect-ratio: 1/1;
+            box-shadow: 0 0 20px rgba(0, 210, 255, 0.15);
+        }
+
+        .add-cam-btn {
+            background: var(--accent-blue);
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-weight: 700;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .add-cam-btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .alerts-list {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            max-height: 220px;
+            overflow-y: auto;
+        }
+
+        .alert-item {
+            background: rgba(255, 23, 68, 0.1);
+            border-left: 4px solid var(--accent-red);
+            padding: 10px 14px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .connect-banner {
+            background: rgba(0, 210, 255, 0.1);
+            border: 1px dashed var(--accent-blue);
+            padding: 12px 20px;
+            border-radius: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="brand">
+            <div class="brand-logo"></div>
+            <div class="brand-title">CITY CCTV DIGITAL TWIN CONTROL ROOM</div>
+        </div>
+        <div class="status-badge">
+            <div class="pulse-dot"></div>
+            SYSTEM ONLINE
+        </div>
+    </header>
+
+    <div class="dashboard-container">
+        <!-- Connecting Banner -->
+        <div class="connect-banner">
+            <div>
+                <strong>💻 Connect Secondary Laptops to Central Dashboard:</strong><br>
+                Run on secondary laptop: <code style="color: var(--accent-blue); background: #080c14; padding: 2px 8px; border-radius: 4px;" id="cmdNotice">python camera_node.py --server http://<host_ip>:5000</code>
+            </div>
+            <button class="add-cam-btn" onclick="openAddCameraModal()">+ Add RTSP/IP Camera</button>
+        </div>
+
+        <!-- Top Metrics Cards -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-label">Total Global Headcount</div>
+                <div class="metric-value" id="globalHeadcount">0</div>
+                <div class="metric-sub">Across Active Connected Cameras</div>
+            </div>
+            <div class="metric-card warning">
+                <div class="metric-label">Global Stampede Risk</div>
+                <div class="metric-value" id="globalRisk">0.00</div>
+                <div class="metric-sub">Peak Spatial Convergence</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">T+30s Fast-Forward Prediction</div>
+                <div class="metric-value" id="pred30s">~0 Ppl</div>
+                <div class="metric-sub" id="sub30s">Inflow Forecasting</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-label">T+60s Fast-Forward Prediction</div>
+                <div class="metric-value" id="pred60s">~0 Ppl</div>
+                <div class="metric-sub" id="sub60s">Inflow Forecasting</div>
+            </div>
+            <div class="metric-card critical">
+                <div class="metric-label">T+120s Fast-Forward Prediction</div>
+                <div class="metric-value" id="pred120s">~0 Ppl</div>
+                <div class="metric-sub" id="sub120s">Inflow Forecasting</div>
+            </div>
+        </div>
+
+        <!-- Main Workspace -->
+        <div class="workspace-grid">
+            <!-- Left: Multi-Camera Grid View -->
+            <div class="panel">
+                <div class="panel-header">
+                    <div class="panel-title">📹 Live CCTV Multi-Camera Grid</div>
+                    <div style="font-size: 0.85rem; color: var(--text-muted);" id="camCount">Active Cameras: 1</div>
+                </div>
+                <div class="camera-grid" id="cameraGrid">
+                    <!-- Cameras dynamically appended here -->
+                </div>
+            </div>
+
+            <!-- Right Column: Digital Twin & Alerts -->
+            <div style="display: flex; flex-direction: column; gap: 25px;">
+                <!-- Digital Twin Radar Panel -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">🌐 Digital Twin Overhead Radar View</div>
+                    </div>
+                    <div class="digital-twin-container">
+                        <canvas id="radarCanvas" width="300" height="300"></canvas>
+                        <div style="font-size: 0.8rem; color: var(--text-muted); text-align: center;">
+                            Real-time 2D Bird's-Eye Spatial Coordinates & Motion Vectors
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Incident Alert Log -->
+                <div class="panel">
+                    <div class="panel-header">
+                        <div class="panel-title">⚠️ Live Warning & Incident Log</div>
+                    </div>
+                    <div class="alerts-list" id="alertsList">
+                        <div class="alert-item">
+                            <span>System initialized cleanly. Monitoring active camera feeds...</span>
+                            <span style="color: var(--text-muted);">Now</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('radarCanvas');
+        const ctx = canvas.getContext('2d');
+        const activeCamIds = new Set();
+
+        document.getElementById('cmdNotice').innerText = `python camera_node.py --server http://${window.location.hostname}:5000`;
+
+        function drawRadarGrid(avatars = []) {
+            ctx.fillStyle = '#060911';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.strokeStyle = '#1e293b';
+            ctx.lineWidth = 1;
+            for (let x = 0; x < canvas.width; x += 30) {
+                ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, canvas.height); ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += 30) {
+                ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
+            }
+
+            const angle = (Date.now() / 20) % 360;
+            ctx.save();
+            ctx.translate(canvas.width/2, canvas.height/2);
+            ctx.rotate(angle * Math.PI / 180);
+            ctx.strokeStyle = 'rgba(0, 210, 255, 0.15)';
+            ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, canvas.width); ctx.stroke();
+            ctx.restore();
+
+            avatars.forEach(av => {
+                const [tx, tz] = av.position_twin_xz || [50, 50];
+                const cx = (tx / 100) * canvas.width;
+                const cy = (tz / 100) * canvas.height;
+
+                ctx.fillStyle = '#00e676';
+                ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
+
+                ctx.strokeStyle = '#00d2ff';
+                ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.stroke();
+
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '10px Inter';
+                ctx.fillText(`ID:${av.avatar_id}`, cx + 12, cy + 4);
+            });
+        }
+
+        async function fetchAnalytics() {
+            try {
+                const res = await fetch('/api/analytics');
+                const data = await res.json();
+
+                document.getElementById('globalHeadcount').innerText = data.global_headcount || 0;
+                document.getElementById('globalRisk').innerText = (data.global_max_risk || 0.0).toFixed(2);
+
+                const preds = data.predicted_headcounts || {};
+                document.getElementById('pred30s').innerText = `~${preds['30s'] || 0} Ppl`;
+                document.getElementById('pred60s').innerText = `~${preds['60s'] || 0} Ppl`;
+                document.getElementById('pred120s').innerText = `~${preds['120s'] || 0} Ppl`;
+
+                drawRadarGrid(data.digital_twin_avatars || []);
+
+                // Dynamically append new camera streams without breaking existing video tags
+                if (data.cameras && data.cameras.length > 0) {
+                    document.getElementById('camCount').innerText = `Active Cameras: ${data.cameras.length}`;
+                    const grid = document.getElementById('cameraGrid');
+
+                    data.cameras.forEach(c => {
+                        if (!activeCamIds.has(c.camera_id)) {
+                            activeCamIds.add(c.camera_id);
+                            const box = document.createElement('div');
+                            box.className = 'camera-box';
+                            box.id = `box_${c.camera_id}`;
+                            box.innerHTML = `
+                                <div class="camera-box-header">
+                                    <span>${c.name}</span>
+                                    <span style="color: var(--accent-green);">LIVE</span>
+                                </div>
+                                <img src="/video_feed/${c.camera_id}" class="camera-img" alt="${c.name} Stream">
+                            `;
+                            grid.appendChild(box);
+                        }
+                    });
+                }
+
+                const alertsList = document.getElementById('alertsList');
+                if (data.alerts && data.alerts.length > 0) {
+                    alertsList.innerHTML = data.alerts.map(a => `
+                        <div class="alert-item">
+                            <span>${a.message}</span>
+                            <span style="color: var(--accent-red); font-weight:700;">${a.level}</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (err) {
+                console.error("Telemetry error:", err);
+            }
+        }
+
+        setInterval(fetchAnalytics, 1000);
+        drawRadarGrid();
+
+        function openAddCameraModal() {
+            const source = prompt("Enter RTSP IP Stream URL or local webcam index (e.g. rtsp://192.168.1.100:554/stream or 1):");
+            if (source) {
+                fetch('/api/add_camera', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({source: source, name: `Camera ${activeCamIds.size + 1}`})
+                }).then(() => alert("Camera stream added successfully!"));
+            }
+        }
+    </script>
+</body>
+</html>

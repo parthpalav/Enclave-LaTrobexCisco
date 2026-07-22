@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Connect Laptop Camera to Control Room</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #0b0f19;
+            color: #e2e8f0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .card {
+            background: #131b2e;
+            border: 1px solid #1e293b;
+            border-radius: 16px;
+            padding: 30px;
+            max-width: 480px;
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+            text-align: center;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+
+        h1 {
+            font-size: 1.4rem;
+            font-weight: 800;
+            color: #00d2ff;
+        }
+
+        p {
+            font-size: 0.9rem;
+            color: #94a3b8;
+        }
+
+        video {
+            width: 100%;
+            border-radius: 10px;
+            background: #000;
+            aspect-ratio: 4/3;
+            object-fit: cover;
+        }
+
+        .btn {
+            background: #00d2ff;
+            color: #000;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+
+        .status-badge {
+            font-size: 0.85rem;
+            font-weight: 600;
+            padding: 8px 16px;
+            border-radius: 20px;
+            background: rgba(255, 23, 68, 0.15);
+            color: #ff1744;
+            border: 1px solid #ff1744;
+            display: inline-block;
+        }
+
+        .status-badge.online {
+            background: rgba(0, 230, 118, 0.15);
+            color: #00e676;
+            border-color: #00e676;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="card">
+        <h1>📹 Secondary Laptop Camera Node</h1>
+        <p>This laptop will stream its webcam directly into the Central City CCTV Control Room.</p>
+
+        <video id="webcam" autoplay playsinline muted></video>
+
+        <div>
+            <span class="status-badge" id="statusBadge">OFFLINE — Camera Stopped</span>
+        </div>
+
+        <button class="btn" id="toggleBtn" onclick="toggleStreaming()">Start Streaming</button>
+
+        <p style="font-size: 0.78rem; color: #64748b;">No software installation required. Keep this browser tab open.</p>
+    </div>
+
+    <canvas id="captureCanvas" style="display:none;"></canvas>
+
+    <script>
+        const video = document.getElementById('webcam');
+        const canvas = document.getElementById('captureCanvas');
+        const ctx = canvas.getContext('2d');
+        const statusBadge = document.getElementById('statusBadge');
+        const toggleBtn = document.getElementById('toggleBtn');
+
+        let isStreaming = false;
+        let streamInterval = null;
+        let mediaStream = null;
+        const cameraId = 'laptop_' + Math.floor(Math.random() * 899 + 100);
+
+        async function startCamera() {
+            try {
+                mediaStream = await navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 } });
+                video.srcObject = mediaStream;
+                await video.play();
+                return true;
+            } catch (err) {
+                alert("Camera access denied or unavailable: " + err.message);
+                return false;
+            }
+        }
+
+        async function toggleStreaming() {
+            if (isStreaming) {
+                // Stop streaming
+                isStreaming = false;
+                clearInterval(streamInterval);
+                if (mediaStream) {
+                    mediaStream.getTracks().forEach(t => t.stop());
+                }
+                video.srcObject = null;
+                statusBadge.innerText = "OFFLINE — Camera Stopped";
+                statusBadge.classList.remove('online');
+                toggleBtn.innerText = "Start Streaming";
+            } else {
+                // Start streaming
+                const ok = await startCamera();
+                if (!ok) return;
+
+                isStreaming = true;
+                statusBadge.innerText = "LIVE — Connected as " + cameraId;
+                statusBadge.classList.add('online');
+                toggleBtn.innerText = "Stop Streaming";
+
+                // Register camera on server
+                fetch('/api/add_camera', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        camera_id: cameraId,
+                        name: "Secondary Laptop (" + cameraId + ")",
+                        source: "browser_stream:" + cameraId
+                    })
+                });
+
+                // Stream frames over HTTP POST (15 FPS)
+                streamInterval = setInterval(sendFrame, 65);
+            }
+        }
+
+        function sendFrame() {
+            if (!isStreaming || !video.videoWidth) return;
+
+            canvas.width = 640;
+            canvas.height = 480;
+            ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+            canvas.toBlob(blob => {
+                if (!blob) return;
+                const formData = new FormData();
+                formData.append('frame', blob, 'frame.jpg');
+                formData.append('camera_id', cameraId);
+
+                fetch('/api/stream_upload', {
+                    method: 'POST',
+                    body: formData
+                }).catch(err => console.error("Upload error:", err));
+            }, 'image/jpeg', 0.75);
+        }
+    </script>
+</body>
+</html>

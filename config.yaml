@@ -1,0 +1,42 @@
+# Crowd Detection, Tracking & Flow Prediction Pipeline Configuration
+
+pipeline:
+  target_fps: 20.0
+  device: "cuda:0"
+  log_stage_timings: true
+
+input:
+  source: "sample_crowd.mp4"
+
+detection:
+  model_name: "yolov8s.pt"
+  conf_threshold: 0.3
+  classes: [0]  # 0 is 'person' in COCO dataset
+  cadence: 1
+  tracker_config: "bytetrack.yaml"
+
+optical_flow:
+  backend: "raft_small"
+  downsample_width: 320
+  downsample_height: 240
+  grid_cols: 20
+  grid_rows: 20
+
+risk:
+  weight_density: 0.35
+  weight_divergence: 0.45
+  weight_counterflow: 0.20
+  divergence_threshold: -0.05
+
+prediction:
+  horizons_sec: [30, 60, 120]
+  advection_substeps: 5
+
+visualization:
+  show_gui: true
+  draw_boxes: true
+  draw_flow_arrows: false  # Disabled background grid arrows; using 1 accurate predictive arrow per Person ID
+  draw_divergence_heatmap: true
+  draw_predictions: true
+  draw_telemetry: true
+  draw_digital_twin: true   # Renders top-down 2D Digital Twin Radar View panel
