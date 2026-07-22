@@ -386,10 +386,11 @@
 
         document.getElementById('cmdNotice').innerText = `python camera_node.py --server http://${window.location.hostname}:5000`;
 
-        function drawRadarGrid(avatars = []) {
+        function drawRadarGrid(avatars = [], camera_zones = {}) {
             ctx.fillStyle = '#060911';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
 
+            // Draw base grid
             ctx.strokeStyle = '#1e293b';
             ctx.lineWidth = 1;
             for (let x = 0; x < canvas.width; x += 30) {
@@ -399,30 +400,69 @@
                 ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(canvas.width, y); ctx.stroke();
             }
 
+            // Draw camera zone boundaries with labels
+            const zoneColors = ['rgba(0,210,255,0.18)', 'rgba(124,77,255,0.18)', 'rgba(0,230,118,0.18)', 'rgba(255,171,0,0.18)'];
+            const zoneBorder = ['#00d2ff', '#7c4dff', '#00e676', '#ffab00'];
+            let zi = 0;
+            for (const [cam_id, zone] of Object.entries(camera_zones)) {
+                const zx = zone.x * canvas.width;
+                const zy = zone.y * canvas.height;
+                const zw = zone.w * canvas.width;
+                const zh = zone.h * canvas.height;
+                ctx.fillStyle = zoneColors[zi % zoneColors.length];
+                ctx.fillRect(zx, zy, zw, zh);
+                ctx.strokeStyle = zoneBorder[zi % zoneBorder.length];
+                ctx.lineWidth = 1.5;
+                ctx.strokeRect(zx, zy, zw, zh);
+                ctx.fillStyle = zoneBorder[zi % zoneBorder.length];
+                ctx.font = 'bold 9px Inter';
+                ctx.fillText(zone.label || cam_id, zx + 5, zy + 13);
+                zi++;
+            }
+
+            // Rotating sweep line
             const angle = (Date.now() / 20) % 360;
             ctx.save();
             ctx.translate(canvas.width/2, canvas.height/2);
             ctx.rotate(angle * Math.PI / 180);
-            ctx.strokeStyle = 'rgba(0, 210, 255, 0.15)';
+            ctx.strokeStyle = 'rgba(0, 210, 255, 0.12)';
+            ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(0, canvas.width); ctx.stroke();
             ctx.restore();
 
+            // Draw avatars using global twin_x / twin_y (0.0–1.0 global floor scale)
             avatars.forEach(av => {
-                const [tx, tz] = av.position_twin_xz || [50, 50];
-                const cx = (tx / 100) * canvas.width;
-                const cy = (tz / 100) * canvas.height;
+                const tx = (av.twin_x ?? 0.5) * canvas.width;
+                const ty = (av.twin_y ?? 0.5) * canvas.height;
 
                 ctx.fillStyle = '#00e676';
-                ctx.beginPath(); ctx.arc(cx, cy, 5, 0, Math.PI * 2); ctx.fill();
-
+                ctx.beginPath(); ctx.arc(tx, ty, 5, 0, Math.PI * 2); ctx.fill();
                 ctx.strokeStyle = '#00d2ff';
-                ctx.beginPath(); ctx.arc(cx, cy, 9, 0, Math.PI * 2); ctx.stroke();
+                ctx.lineWidth = 1.5;
+                ctx.beginPath(); ctx.arc(tx, ty, 9, 0, Math.PI * 2); ctx.stroke();
+
+                // Velocity arrow
+                const vel = av.velocity_vector || [0, 0];
+                const speed = Math.hypot(vel[0], vel[1]);
+                if (speed > 0.3) {
+                    const ex = Math.min(Math.max(tx + vel[0] * 4, 3), canvas.width - 3);
+                    const ey = Math.min(Math.max(ty + vel[1] * 4, 3), canvas.height - 3);
+                    ctx.strokeStyle = '#00ffff';
+                    ctx.lineWidth = 1.5;
+                    ctx.beginPath(); ctx.moveTo(tx, ty); ctx.lineTo(ex, ey); ctx.stroke();
+                }
 
                 ctx.fillStyle = '#ffffff';
-                ctx.font = '10px Inter';
-                ctx.fillText(`ID:${av.avatar_id}`, cx + 12, cy + 4);
+                ctx.font = '9px Inter';
+                ctx.fillText(`#${av.avatar_id}`, tx + 11, ty + 4);
             });
+
+            // Outer border
+            ctx.strokeStyle = 'rgba(0,210,255,0.4)';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, canvas.width - 1, canvas.height - 1);
         }
+
 
         async function fetchAnalytics() {
             try {
@@ -437,7 +477,7 @@
                 document.getElementById('pred60s').innerText = `~${preds['60s'] || 0} Ppl`;
                 document.getElementById('pred120s').innerText = `~${preds['120s'] || 0} Ppl`;
 
-                drawRadarGrid(data.digital_twin_avatars || []);
+                drawRadarGrid(data.digital_twin_avatars || [], data.camera_zones || {});
 
                 // Dynamically append new camera streams without breaking existing video tags
                 if (data.cameras && data.cameras.length > 0) {

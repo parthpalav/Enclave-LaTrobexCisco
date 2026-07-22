@@ -19,28 +19,20 @@ def cosine_similarity(a: List[float], b: List[float]) -> float:
     return float(np.dot(va, vb) / denom)
 
 
-def deduplicate_global_tracks(all_camera_tracks: List[Dict]) -> int:
+def deduplicate_global_tracks(all_camera_tracks: List[Dict], cam_zones: Dict[str, dict] = None) -> int:
     """
     Cross-camera deduplication using HSV appearance fingerprint cosine similarity.
-    Groups tracks from different cameras that likely represent the same physical person.
+    Only compares tracks from cameras whose zones GEOMETRICALLY OVERLAP.
+    Non-overlapping zones cannot share the same person — no comparison needed.
 
-    Logic:
-    - Collects all (camera_id, track) pairs
-    - Computes pairwise cosine similarity of appearance fingerprints between tracks
-      from DIFFERENT cameras
-    - If similarity >= REID_THRESHOLD, marks the pair as the same person (duplicate)
-    - Uses Union-Find to cluster duplicates
-    - Returns unique_count = total_tracks - number_of_duplicates_merged
-
-    REID_THRESHOLD = 0.90 (high threshold to avoid false merges)
+    REID_THRESHOLD = 0.75  (lower = more aggressive merging)
     """
-    REID_THRESHOLD = 0.90
+    REID_THRESHOLD = 0.75
 
     if not all_camera_tracks:
         return 0
 
     n = len(all_camera_tracks)
-    # Union-Find
     parent = list(range(n))
 
     def find(x):
@@ -56,19 +48,23 @@ def deduplicate_global_tracks(all_camera_tracks: List[Dict]) -> int:
         for j in range(i + 1, n):
             cam_i = all_camera_tracks[i]["camera_id"]
             cam_j = all_camera_tracks[j]["camera_id"]
-            # Only try to merge tracks from DIFFERENT cameras
             if cam_i == cam_j:
                 continue
+            # Skip dedup entirely if zones don't overlap
+            if cam_zones:
+                zi = cam_zones.get(cam_i) or all_camera_tracks[i].get("zone")
+                zj = cam_zones.get(cam_j) or all_camera_tracks[j].get("zone")
+                if zi and zj and not zones_overlap(zi, zj):
+                    continue
             feat_i = all_camera_tracks[i].get("appearance", [])
             feat_j = all_camera_tracks[j].get("appearance", [])
             if not feat_i or not feat_j:
                 continue
-            sim = cosine_similarity(feat_i, feat_j)
-            if sim >= REID_THRESHOLD:
+            if cosine_similarity(feat_i, feat_j) >= REID_THRESHOLD:
                 union(i, j)
 
-    unique_clusters = len(set(find(i) for i in range(n)))
-    return unique_clusters
+    return len(set(find(i) for i in range(n)))
+
 
 # ─────────────────────────────────────────────────────────────────
 # Spatial zone registry: maps camera_id → zone rect in digital twin
@@ -104,6 +100,68 @@ def get_or_assign_zone(camera_id: str) -> dict:
             label = f"Zone {chr(65 + slot_idx + 2)} — {camera_id}"
             CAMERA_ZONES[camera_id] = {"label": label, **slot}
         return CAMERA_ZONES[camera_id]
+
+
+def zones_overlap(z1: dict, z2: dict) -> bool:
+    """Returns True if two zone rects share any area (AABB intersection test)."""
+    return (z1["x"] < z2["x"] + z2["w"] and z1["x"] + z1["w"] > z2["x"] and
+            z1["y"] < z2["y"] + z2["h"] and z1["y"] + z1["h"] > z2["y"])
+
+
+class GlobalIDRegistry:
+    """
+    Manages a global pool of sequential person IDs across all cameras.
+
+    When a (camera_id, local_track_id) is seen for the first time, it is assigned
+    the lowest available global ID. When it disappears from ALL cameras, the global
+    ID is returned to the free pool and reassigned to the next new person.
+
+    This prevents IDs growing unboundedly and resets them cleanly.
+    """
+    def __init__(self):
+        self._lock = threading.Lock()
+        self._local_to_global: Dict[tuple, int] = {}   # (cam_id, local_id) -> global_id
+        self._global_active: set = set()               # currently assigned global IDs
+        self._next_id: int = 1                         # monotonic counter for new IDs
+        self._free_pool: List[int] = []                # recycled IDs (lowest first)
+
+    def _alloc(self) -> int:
+        if self._free_pool:
+            return self._free_pool.pop(0)
+        gid = self._next_id
+        self._next_id += 1
+        return gid
+
+    def update(self, active_tracks: Dict[str, List[int]]) -> Dict[tuple, int]:
+        """
+        active_tracks: {camera_id: [local_track_id, ...]} for all cameras this frame.
+        Returns mapping (cam_id, local_id) -> global_id for all currently active tracks.
+        """
+        with self._lock:
+            current_keys = set()
+            for cam_id, local_ids in active_tracks.items():
+                for lid in local_ids:
+                    key = (cam_id, lid)
+                    current_keys.add(key)
+                    if key not in self._local_to_global:
+                        gid = self._alloc()
+                        self._local_to_global[key] = gid
+                        self._global_active.add(gid)
+
+            # Release IDs for tracks that disappeared from ALL cameras
+            gone_keys = set(self._local_to_global) - current_keys
+            for key in gone_keys:
+                gid = self._local_to_global.pop(key)
+                self._global_active.discard(gid)
+                self._free_pool.append(gid)
+            self._free_pool.sort()
+
+            return dict(self._local_to_global)
+
+
+# Singleton registry shared across all camera workers
+_global_id_registry = GlobalIDRegistry()
+
 
 
 class CameraWorker(threading.Thread):
@@ -286,7 +344,8 @@ class MultiCameraManager:
         predicted_120s = 0
         all_avatars = []
         camera_summaries = []
-        all_tracks_global: List[Dict] = []   # for cross-camera Re-ID
+        all_tracks_global: List[Dict] = []
+        active_tracks_by_cam: Dict[str, List[int]] = {}
 
         with self.lock:
             workers_snapshot = list(self.workers.items())
@@ -295,7 +354,6 @@ class MultiCameraManager:
             _, contract = worker.get_latest_data()
 
             hc = contract.get("headcount", 0) if contract else 0
-
             c_risk = contract.get("risk_score_current", 0.0) if contract else 0.0
             max_risk = max(max_risk, c_risk)
 
@@ -306,24 +364,35 @@ class MultiCameraManager:
             predicted_60s += p_headcounts.get("60s", hc)
             predicted_120s += p_headcounts.get("120s", hc)
 
-            # Collect tracks with camera_id for global Re-ID deduplication
+            zone = worker.zone
+
             if contract:
-                for t in contract.get("tracks", []):
+                tracks = contract.get("tracks", [])
+                # Build active local track IDs for global ID registry
+                active_tracks_by_cam[cam_id] = [t["track_id"] for t in tracks if t.get("track_id", -1) > 0]
+
+                # Collect tracks for cross-camera dedup (only between overlapping zones)
+                for t in tracks:
                     all_tracks_global.append({
                         "camera_id": cam_id,
                         "track_id": t.get("track_id"),
                         "appearance": t.get("appearance", []),
+                        "zone": zone,
                     })
 
-            zone = worker.zone
-            if contract:
                 dt_state = contract.get("digital_twin_state", {})
                 avatars = dt_state.get("avatars", [])
                 for av in avatars:
+                    # FIX: use position_twin_xz (0-100 scale) for accurate zone mapping
+                    xz = av.get("position_twin_xz", [50.0, 50.0])
+                    norm_x = xz[0] / 100.0   # 0.0 – 1.0 within camera frame
+                    norm_y = xz[1] / 100.0
+
                     av["camera_id"] = cam_id
                     av["zone"] = zone
-                    av["twin_x"] = zone["x"] + av.get("x", 0.5) * zone["w"]
-                    av["twin_y"] = zone["y"] + av.get("y", 0.5) * zone["h"]
+                    # Map normalised camera position into global floor plan zone
+                    av["twin_x"] = round(zone["x"] + norm_x * zone["w"], 4)
+                    av["twin_y"] = round(zone["y"] + norm_y * zone["h"], 4)
                     all_avatars.append(av)
 
             camera_summaries.append({
@@ -335,11 +404,34 @@ class MultiCameraManager:
                 "zone": zone
             })
 
-        # Cross-camera Re-ID: deduplicate people visible in multiple cameras
+        # Update global ID pool — release IDs for people who left all cameras
+        id_map = _global_id_registry.update(active_tracks_by_cam)
+        # Remap avatar IDs to compact global IDs
+        for av in all_avatars:
+            cam_id = av.get("camera_id", "")
+            local_id = av.get("avatar_id", -1)
+            gid = id_map.get((cam_id, local_id), local_id)
+            av["avatar_id"] = gid
+
+        # Cross-camera Re-ID dedup — only between cameras whose zones actually overlap
+        # Non-overlapping zones by definition cannot have the same person simultaneously
         if len(workers_snapshot) > 1 and all_tracks_global:
-            unique_headcount = deduplicate_global_tracks(all_tracks_global)
+            # Build overlap pairs
+            cam_zones = {c["camera_id"]: c["zone"] for c in camera_summaries}
+            cam_ids = list(cam_zones.keys())
+            has_any_overlap = any(
+                zones_overlap(cam_zones[cam_ids[i]], cam_zones[cam_ids[j]])
+                for i in range(len(cam_ids))
+                for j in range(i + 1, len(cam_ids))
+            )
+            if has_any_overlap:
+                # Only pass tracks from overlapping camera pairs into dedup
+                unique_headcount = deduplicate_global_tracks(all_tracks_global, cam_zones)
+            else:
+                # Non-overlapping zones: simple sum is exact and correct
+                unique_headcount = sum(c["headcount"] for c in camera_summaries)
         else:
-            unique_headcount = sum(c.get("headcount", 0) for c in camera_summaries)
+            unique_headcount = sum(c["headcount"] for c in camera_summaries)
 
         alerts = []
         if max_risk > 0.60:
@@ -361,6 +453,7 @@ class MultiCameraManager:
             "alerts": alerts,
             "camera_zones": CAMERA_ZONES
         }
+
 
 
     def stop_all(self):
