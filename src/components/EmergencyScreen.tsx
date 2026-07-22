@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
-import { AlertOctagon, Flame, Navigation, Cross } from 'lucide-react';
+import { AlertOctagon, Flame, Navigation, Cross, Loader2, AlertCircle } from 'lucide-react';
 import type { EmergencyPayload } from '../hooks/useSocket';
+import { useHospitalNavigation } from '../hooks/useHospitalNavigation';
 
 interface EmergencyScreenProps {
   payload: EmergencyPayload | null;
@@ -8,6 +9,12 @@ interface EmergencyScreenProps {
 
 export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => {
   const audioCtxRef = useRef<AudioContext | null>(null);
+  const {
+    isLoading,
+    statusText,
+    errorMessage,
+    navigateToNearestHospital,
+  } = useHospitalNavigation();
 
   useEffect(() => {
     // 1. Device Vibration
@@ -55,11 +62,6 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
   const handleOpenMap = () => {
     const mapsUrl = 'https://www.google.com/maps/dir/?api=1&destination=28.641889,77.230694';
     window.open(mapsUrl, '_blank', 'noopener,noreferrer');
-  };
-
-  const handleOpenHospital = () => {
-    const hospitalUrl = 'https://www.google.com/search?q=hospital+near+me&oq=hospital+near+me';
-    window.open(hospitalUrl, '_blank', 'noopener,noreferrer');
   };
 
   const formattedTime = payload?.timestamp
@@ -124,15 +126,36 @@ export const EmergencyScreen: React.FC<EmergencyScreenProps> = ({ payload }) => 
             <span>Open Safe Route in Google Maps</span>
           </button>
 
-          {/* Find Medical Help Button */}
+          {/* Find Medical Help Button (Automated Hospital Locator) */}
           <button
-            onClick={handleOpenHospital}
-            className="w-full py-3 px-4 bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-sm rounded-2xl shadow-2xl border border-red-200 transition-all duration-150 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2"
-            aria-label="Search for nearby hospitals and medical assistance"
+            onClick={navigateToNearestHospital}
+            disabled={isLoading}
+            className={`w-full py-3 px-4 bg-white hover:bg-slate-100 text-slate-900 font-extrabold text-sm rounded-2xl shadow-2xl border border-red-200 transition-all duration-150 active:scale-[0.98] cursor-pointer flex items-center justify-center space-x-2 ${
+              isLoading ? 'opacity-90 cursor-wait' : ''
+            }`}
+            aria-label="Search for nearby hospitals and navigate to the nearest hospital automatically"
           >
-            <Cross className="w-4 h-4 text-red-600 fill-red-600 shrink-0" />
-            <span>Find Medical Help</span>
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 text-red-600 animate-spin shrink-0" />
+            ) : (
+              <Cross className="w-4 h-4 text-red-600 fill-red-600 shrink-0" />
+            )}
+            <span>{isLoading ? (statusText || 'Locating nearest hospital...') : 'Find Medical Help'}</span>
           </button>
+
+          {/* Real-time Status / Error Messages */}
+          {statusText && !errorMessage && (
+            <div className="text-[11px] font-semibold text-amber-200 bg-red-900/60 border border-amber-500/30 px-3 py-1.5 rounded-xl w-full text-center animate-fadeIn">
+              {statusText}
+            </div>
+          )}
+
+          {errorMessage && (
+            <div className="text-[11px] font-semibold text-red-200 bg-red-900/90 border border-red-400 px-3 py-1.5 rounded-xl w-full text-center flex items-center justify-center space-x-1.5 shadow-lg animate-fadeIn">
+              <AlertCircle className="w-3.5 h-3.5 text-red-300 shrink-0" />
+              <span>{errorMessage}</span>
+            </div>
+          )}
         </div>
       </main>
 
