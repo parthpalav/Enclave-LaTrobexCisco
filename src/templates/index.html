@@ -443,7 +443,9 @@
                 if (data.cameras && data.cameras.length > 0) {
                     document.getElementById('camCount').innerText = `Active Cameras: ${data.cameras.length}`;
                     const grid = document.getElementById('cameraGrid');
+                    const currentIds = new Set(data.cameras.map(c => c.camera_id));
 
+                    // Add new cameras
                     data.cameras.forEach(c => {
                         if (!activeCamIds.has(c.camera_id)) {
                             activeCamIds.add(c.camera_id);
@@ -460,7 +462,23 @@
                             grid.appendChild(box);
                         }
                     });
+
+                    // Remove disconnected cameras (fade out then delete)
+                    activeCamIds.forEach(id => {
+                        if (!currentIds.has(id)) {
+                            activeCamIds.delete(id);
+                            const box = document.getElementById(`box_${id}`);
+                            if (box) {
+                                box.style.transition = 'opacity 1s';
+                                box.style.opacity = '0';
+                                setTimeout(() => box.remove(), 1000);
+                            }
+                        }
+                    });
+                } else {
+                    document.getElementById('camCount').innerText = 'Active Cameras: 0';
                 }
+
 
                 const alertsList = document.getElementById('alertsList');
                 if (data.alerts && data.alerts.length > 0) {

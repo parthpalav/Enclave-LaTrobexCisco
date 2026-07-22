@@ -63,10 +63,13 @@ class CameraWorker(threading.Thread):
         self.latest_rendered_frame: Optional[np.ndarray] = None
         self.latest_contract: Dict[str, Any] = {}
         self.last_heartbeat: float = time.time()
+        self.last_frame_time: float = time.time()   # updated every frame received
+        self.is_push_stream: bool = str(source).startswith("push_stream") or str(source).startswith("browser_stream")
         self.lock = threading.Lock()
         self.daemon = True
 
     def push_frame(self, frame: np.ndarray):
+        self.last_frame_time = time.time()   # mark activity
         if self.frame_queue.full():
             try:
                 self.frame_queue.get_nowait()
@@ -78,7 +81,7 @@ class CameraWorker(threading.Thread):
         self.running = True
         print(f"[MultiCam] Starting worker '{self.name}' ({self.camera_id}) → {self.zone['label']}")
 
-        is_push_stream = str(self.source).startswith("push_stream") or str(self.source).startswith("browser_stream")
+        is_push_stream = self.is_push_stream
         cap = None
         if not is_push_stream:
             source_input = int(self.source) if str(self.source).isdigit() else self.source
@@ -101,6 +104,7 @@ class CameraWorker(threading.Thread):
                         time.sleep(0.05)
                         cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                         continue
+                    self.last_frame_time = time.time()   # mark activity for non-push streams
 
                     if str(self.source).isdigit():
                         frame = cv2.flip(frame, 1)
@@ -144,6 +148,28 @@ class MultiCameraManager:
         self.base_config = load_config(config_path)
         self.workers: Dict[str, CameraWorker] = {}
         self.lock = threading.Lock()
+
+        # Background thread: evicts push-stream cameras that go silent
+        self._cleanup_thread = threading.Thread(target=self._cleanup_stale_workers, daemon=True)
+        self._cleanup_thread.start()
+
+    STALE_TIMEOUT_SEC = 10.0   # seconds of silence before removing a push-stream device
+
+    def _cleanup_stale_workers(self):
+        """Runs every 5s. Removes push-stream workers that haven't sent a frame recently."""
+        while True:
+            time.sleep(5)
+            now = time.time()
+            to_remove = []
+            with self.lock:
+                for cam_id, worker in self.workers.items():
+                    if worker.is_push_stream:
+                        silent_for = now - worker.last_frame_time
+                        if silent_for > self.STALE_TIMEOUT_SEC:
+                            to_remove.append(cam_id)
+            for cam_id in to_remove:
+                print(f"[MultiCam] Device '{cam_id}' timed out ({self.STALE_TIMEOUT_SEC}s silence). Removing.")
+                self.remove_camera(cam_id)
 
     def _add_camera_nolock(self, camera_id: str, name: str, source: Any) -> bool:
         """Internal: add camera WITHOUT acquiring lock (caller must hold it)."""
