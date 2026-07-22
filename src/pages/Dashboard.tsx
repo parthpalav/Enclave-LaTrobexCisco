@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { Header } from '../components/Header';
 import { ControlButtons } from '../components/ControlButtons';
@@ -11,6 +11,7 @@ import type { ToastMessage } from '../components/Toast';
 import { QRCodePanel } from '../components/QRCodePanel';
 import { BillboardPanel } from '../components/BillboardPanel';
 import { ConnectedDevicesPanel } from '../components/ConnectedDevicesPanel';
+import { speakEmergency, stopEmergencySpeech } from '../utils/speech';
 
 export const Dashboard: React.FC = () => {
   const {
@@ -28,6 +29,19 @@ export const Dashboard: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isDisasterMenuOpen, setIsDisasterMenuOpen] = useState<boolean>(false);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
+
+  // Handle Emergency Voice Announcement on Admin Panel ONLY
+  useEffect(() => {
+    if (isEmergency) {
+      speakEmergency();
+    } else {
+      stopEmergencySpeech();
+    }
+
+    return () => {
+      stopEmergencySpeech();
+    };
+  }, [isEmergency]);
 
   // Toast Helper
   const addToast = useCallback((type: 'success' | 'error', message: string) => {

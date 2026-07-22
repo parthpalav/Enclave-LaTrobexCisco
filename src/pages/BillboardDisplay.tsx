@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { useSocket } from '../hooks/useSocket';
 import { Monitor, AlertOctagon, Radio, ShieldAlert, Sparkles, ShoppingBag, Trees, TrainTrack, MapPin, Clock } from 'lucide-react';
 import { reverseGeocode } from '../services/reverseGeocoding';
-import { speakEmergency, stopEmergencySpeech } from '../utils/speech';
 
 interface Ad {
   id: number;
@@ -69,19 +68,6 @@ export const BillboardDisplay: React.FC = () => {
     }, 5000);
 
     return () => clearInterval(interval);
-  }, [isEmergency]);
-
-  // Handle Emergency Voice Announcement & Warning Chime on Billboard
-  useEffect(() => {
-    if (isEmergency) {
-      speakEmergency();
-    } else {
-      stopEmergencySpeech();
-    }
-
-    return () => {
-      stopEmergencySpeech();
-    };
   }, [isEmergency]);
 
   // Update last updated timestamp whenever socket status or emergency alert changes
