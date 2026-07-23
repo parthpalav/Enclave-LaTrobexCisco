@@ -71,6 +71,7 @@ class CameraPipeline:
             person_class_id=settings.person_class_id,
             tracker_config=settings.tracker_config,
             half=settings.yolo_half_precision,
+            max_det=settings.yolo_max_det,
         )
         self.movement = MovementTracker()
         self.density = DensityEstimator(

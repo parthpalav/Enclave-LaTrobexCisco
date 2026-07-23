@@ -73,6 +73,10 @@ class Settings(BaseSettings):
     yolo_iou: float = Field(default=0.45, ge=0.0, le=1.0)
     yolo_imgsz: int = Field(default=640)
     person_class_id: int = Field(default=0, description="COCO class id for 'person'.")
+    yolo_max_det: int = Field(
+        default=300,
+        description="Max detections per frame. Raise for very dense crowds.",
+    )
     yolo_half_precision: bool = Field(
         default=False, description="Use FP16 on CUDA for throughput."
     )
@@ -89,7 +93,7 @@ class Settings(BaseSettings):
     # Heatmap / Gaussian density
     # ------------------------------------------------------------------ #
     heatmap_sigma: float = Field(
-        default=25.0, description="Gaussian kernel sigma (spread of each person)."
+        default=55.0, description="Gaussian kernel sigma (spread of each person)."
     )
     heatmap_kernel_size: int = Field(
         default=0,
@@ -114,31 +118,31 @@ class Settings(BaseSettings):
         description="Compute density at a fraction of frame size for speed.",
     )
     heatmap_min_density: float = Field(
-        default=0.05,
+        default=0.04,
         ge=0.0,
         le=1.0,
         description="Normalized density below this stays fully transparent.",
     )
     heatmap_colormap: str = Field(
-        default="crowdvision",
-        description="'crowdvision' (blue→green→yellow→orange→red) or an OpenCV name.",
+        default="jet",
+        description="'crowdvision' (blue→green→yellow→orange→red), 'jet' or an OpenCV name.",
     )
     heatmap_mode: str = Field(
-        default="overlay",
+        default="pure",
         description=(
             "'overlay' blends the heatmap over the camera image; 'pure' renders a "
             "standalone abstract heatmap (grey where empty, no faces/visuals)."
         ),
     )
     density_mode: str = Field(
-        default="foot",
+        default="box",
         description=(
             "How each person contributes density: 'foot' (ground point), 'center', "
             "or 'box' (the whole detection area — colours the person's body region)."
         ),
     )
     heatmap_grid: bool = Field(
-        default=False, description="Draw a faint reference grid (pure mode only)."
+        default=True, description="Draw a faint reference grid (pure mode only)."
     )
     heatmap_grid_size: int = Field(
         default=32, description="Grid cell size in pixels."

@@ -32,6 +32,7 @@ export interface LiveFrame {
   status: CameraStatus;
   analytics: Analytics;
   image?: string;
+  raw_image?: string;
 }
 
 export interface AddCameraPayload {

@@ -86,13 +86,16 @@ async def stream_live(websocket: WebSocket) -> None:
     """WebSocket stream of {analytics + base64 heatmap} frames.
 
     Query params: ``camera_id`` (required), ``fps`` (optional cap),
-    ``include_image`` ('1' default; '0' for analytics-only).
+    ``include_image`` ('1' default; '0' for analytics-only),
+    ``include_raw`` ('1' to also stream the original camera preview — same
+    transport as the heatmap, so both panes stay in sync and reconnect together).
     """
     await websocket.accept()
     manager: CameraManager = get_camera_manager()
 
     camera_id = websocket.query_params.get("camera_id")
     include_image = websocket.query_params.get("include_image", "1") != "0"
+    include_raw = websocket.query_params.get("include_raw", "0") != "0"
     try:
         fps = int(websocket.query_params.get("fps", settings.target_fps))
     except ValueError:
@@ -129,6 +132,13 @@ async def stream_live(websocket: WebSocket) -> None:
                         message["image"] = (
                             "data:image/jpeg;base64,"
                             + base64.b64encode(jpeg).decode("ascii")
+                        )
+                if include_raw:
+                    raw = pipeline.latest_raw_jpeg()
+                    if raw is not None:
+                        message["raw_image"] = (
+                            "data:image/jpeg;base64,"
+                            + base64.b64encode(raw).decode("ascii")
                         )
                 await websocket.send_json(message)
             await asyncio.sleep(period)

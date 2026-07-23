@@ -153,7 +153,7 @@ export default function Dashboard() {
                 <HeatmapView
                   title="Original Camera"
                   connected={live.connected}
-                  image={api.mjpegUrl(selected, "raw")}
+                  image={live.rawImage ?? api.mjpegUrl(selected, "raw")}
                 />
                 {/* Heatmap overlay (WebSocket base64 frames) */}
                 <HeatmapView

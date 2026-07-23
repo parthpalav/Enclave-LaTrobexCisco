@@ -5,6 +5,7 @@ import { wsUrl } from "../services/api";
 interface LiveState {
   connected: boolean;
   image?: string;
+  rawImage?: string;
   analytics?: Analytics;
   status?: CameraStatus;
 }
@@ -43,6 +44,7 @@ export function useLiveStream(cameraId: string | null): LiveState {
           setState({
             connected: true,
             image: msg.image,
+            rawImage: msg.raw_image,
             analytics: msg.analytics,
             status: msg.status,
           });

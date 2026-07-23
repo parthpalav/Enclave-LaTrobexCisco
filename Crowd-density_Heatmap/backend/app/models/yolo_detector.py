@@ -44,6 +44,7 @@ class YoloDetector:
         person_class_id: int = 0,
         tracker_config: str = "bytetrack.yaml",
         half: bool = False,
+        max_det: int = 300,
     ):
         self.device = resolve_device(device)
         self.confidence = confidence
@@ -52,6 +53,8 @@ class YoloDetector:
         self.person_class_id = person_class_id
         self.tracker_config = tracker_config
         self.half = half and self.device.startswith("cuda")
+        # Upper bound on detections per frame — raise for very dense crowds.
+        self.max_det = max_det
         self.model_name = model_path
         self._model = self._load(model_path, fallback_path)
 
@@ -115,6 +118,7 @@ class YoloDetector:
             classes=[self.person_class_id],
             device=self.device,
             half=self.half,
+            max_det=self.max_det,
             verbose=False,
         )
         return self._to_detections(results[0])
@@ -129,6 +133,7 @@ class YoloDetector:
             classes=[self.person_class_id],
             device=self.device,
             half=self.half,
+            max_det=self.max_det,
             persist=True,
             tracker=self.tracker_config,
             verbose=False,

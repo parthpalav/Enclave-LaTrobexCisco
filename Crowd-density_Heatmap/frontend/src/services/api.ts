@@ -50,5 +50,8 @@ export function wsUrl(camera_id: string): string {
   const url = new URL(`${base}/api/v1/stream/live`);
   url.protocol = url.protocol === "https:" ? "wss:" : "ws:";
   url.searchParams.set("camera_id", camera_id);
+  // Stream the original camera preview over the same socket as the heatmap so
+  // both panes share one reliable transport (MJPEG <img> never auto-reconnects).
+  url.searchParams.set("include_raw", "1");
   return url.toString();
 }
