@@ -6,6 +6,7 @@ import { HeatmapPlaceholder } from '../components/HeatmapPlaceholder';
 import { StatusPanel } from '../components/StatusPanel';
 import { ConfirmationModal } from '../components/ConfirmationModal';
 import { DisasterDetectionModal } from '../components/DisasterDetectionModal';
+import { PublicMovementModal } from '../components/PublicMovementModal';
 import { Toast } from '../components/Toast';
 import type { ToastMessage } from '../components/Toast';
 import { QRCodePanel } from '../components/QRCodePanel';
@@ -31,6 +32,7 @@ export const Dashboard: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState<boolean>(false);
   const [isDisasterMenuOpen, setIsDisasterMenuOpen] = useState<boolean>(false);
   const [isEEWOverlayOpen, setIsEEWOverlayOpen] = useState<boolean>(false);
+  const [isPublicMovementOpen, setIsPublicMovementOpen] = useState<boolean>(false);
   const [autoTriggerInfo, setAutoTriggerInfo] = useState<string | null>(null);
   const [toasts, setToasts] = useState<ToastMessage[]>([]);
 
@@ -195,6 +197,12 @@ export const Dashboard: React.FC = () => {
         onEarthquakeTrigger={handleEarthquakeTrigger}
       />
 
+      {/* Public Movement YOLO People Counter Modal View */}
+      <PublicMovementModal
+        isOpen={isPublicMovementOpen}
+        onClose={() => setIsPublicMovementOpen(false)}
+      />
+
       {/* 1. Dashboard Header */}
       <Header
         isConnected={isConnected}
@@ -213,6 +221,7 @@ export const Dashboard: React.FC = () => {
       <ControlButtons
         onRaiseSOSClick={handleRaiseSOSClick}
         onClearSOSClick={handleClearSOSClick}
+        onPublicMovementClick={() => setIsPublicMovementOpen(true)}
         isEmergencyActive={isEmergency}
       />
 

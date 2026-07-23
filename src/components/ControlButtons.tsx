@@ -4,12 +4,14 @@ import { AlertTriangle, Phone, MessageSquare, Info, CheckCircle2, Footprints } f
 interface ControlButtonsProps {
   onRaiseSOSClick: () => void;
   onClearSOSClick: () => void;
+  onPublicMovementClick?: () => void;
   isEmergencyActive: boolean;
 }
 
 export const ControlButtons: React.FC<ControlButtonsProps> = ({
   onRaiseSOSClick,
   onClearSOSClick,
+  onPublicMovementClick,
   isEmergencyActive,
 }) => {
   return (
@@ -83,27 +85,16 @@ export const ControlButtons: React.FC<ControlButtonsProps> = ({
           </div>
         </div>
 
-        {/* Public Movement (UI Placeholder Button) */}
+        {/* Public Movement (Active Entry Point Button) */}
         <div className="relative group flex-1 md:flex-initial">
           <button
-            disabled
-            className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-3.5 bg-slate-800/50 text-slate-500 font-semibold text-base rounded-xl border border-slate-800 cursor-not-allowed opacity-60 transition-colors"
-            aria-label="Public Movement (UI Placeholder)"
+            onClick={onPublicMovementClick}
+            className="w-full inline-flex items-center justify-center space-x-2.5 px-6 py-3.5 bg-slate-800 hover:bg-slate-750 text-cyan-300 hover:text-white font-bold text-base rounded-xl border border-cyan-500/40 hover:border-cyan-400 shadow-lg shadow-cyan-950/30 transition-all duration-200 active:scale-[0.98] cursor-pointer"
+            aria-label="Open Public Movement YOLO People Counter View"
           >
-            <Footprints className="w-5 h-5 text-slate-500" />
+            <Footprints className="w-5 h-5 text-cyan-400 animate-pulse" />
             <span>Public Movement</span>
           </button>
-
-          {/* Hover Tooltip */}
-          <div className="absolute top-full left-1/2 -translate-x-1/2 mt-2 hidden group-hover:flex flex-col items-center z-30 pointer-events-none w-64">
-            <div className="w-2.5 h-2.5 bg-slate-800 rotate-45 border-t border-l border-slate-700 -mb-1.5" />
-            <div className="bg-slate-800 text-slate-300 text-xs py-2 px-3 rounded-lg border border-slate-700 shadow-xl flex items-start gap-2">
-              <Info className="w-4 h-4 text-cyan-400 shrink-0 mt-0.5" />
-              <span>
-                <strong>Future Integration:</strong> Real-time crowd movement analytics & crowd flow modeling.
-              </span>
-            </div>
-          </div>
         </div>
       </div>
 

@@ -69,25 +69,37 @@ class PersonTracker:
             elapsed_ms = (time.perf_counter() - start_time) * 1000.0
             return self.last_tracks, len(self.last_tracks), elapsed_ms
 
-        results = self.model.track(
-            source=frame,
-            conf=self.config.conf_threshold,
-            classes=self.config.classes,
-            tracker=self.config.tracker_config,
-            persist=True,
-            verbose=False,
-            device=self.device
-        )
+        results = None
+        try:
+            results = self.model.track(
+                source=frame,
+                conf=self.config.conf_threshold,
+                classes=self.config.classes,
+                tracker=self.config.tracker_config,
+                persist=True,
+                verbose=False,
+                device=self.device
+            )
+        except Exception as err:
+            # Fallback to standard detect prediction if tracker encounters an issue
+            results = self.model.predict(
+                source=frame,
+                conf=self.config.conf_threshold,
+                classes=self.config.classes,
+                verbose=False,
+                device=self.device
+            )
 
         tracks = []
         if results and len(results) > 0:
             result = results[0]
             if result.boxes is not None and len(result.boxes) > 0:
                 boxes = result.boxes.cpu().numpy()
-                for box in boxes:
+                for idx, box in enumerate(boxes):
                     xywh = box.xywh[0]
                     xyxy = box.xyxy[0]
-                    track_id = int(box.id[0]) if box.id is not None else -1
+                    # Ensure positive integer track_id so detections are never discarded
+                    track_id = int(box.id[0]) if (box.id is not None and len(box.id) > 0) else (idx + 1)
                     conf = float(box.conf[0])
 
                     x1, y1, x2, y2 = xyxy

@@ -112,7 +112,7 @@ def add_camera():
 
 def main():
     parser = argparse.ArgumentParser(description="Central Digital Twin Control Room Dashboard Server")
-    parser.add_argument("--port",  type=int, default=5000, help="Web dashboard HTTP port (default 5000)")
+    parser.add_argument("--port",  type=int, default=5002, help="Web dashboard HTTP port (default 5002)")
     parser.add_argument("--host",  type=str, default="0.0.0.0", help="Host IP address to bind (0.0.0.0 for LAN)")
     parser.add_argument("--https", action="store_true", help="Enable HTTPS (required for phone camera access via browser)")
     args = parser.parse_args()
@@ -127,8 +127,11 @@ def main():
         print("  [HTTPS] Phone will show 'Not Secure' warning — tap Advanced → Proceed")
         print(f"==========================================================")
 
-    # Initialize ONLY real active physical cameras (Camera 1)
-    camera_manager.add_camera("cam_1", "Camera 1 (Main Webcam)", 0)
+    # Initialize physical webcam gracefully
+    try:
+        camera_manager.add_camera("cam_1", "Camera 1 (Main Webcam)", 0)
+    except Exception as err:
+        print(f"[MultiCam] Notice: Local webcam 0 not initialized ({err}). Ready for push-stream nodes.")
 
     ssl_context = 'adhoc' if args.https else None
     try:
