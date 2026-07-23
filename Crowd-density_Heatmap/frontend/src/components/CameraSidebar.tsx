@@ -9,6 +9,8 @@ interface Props {
   onRemove: (id: string) => Promise<void>;
 }
 
+const SAMPLE_VIDEO_PATH = "/Users/parthspalav/Downloads/video.mp4";
+
 export default function CameraSidebar({
   cameras,
   selected,
@@ -26,6 +28,23 @@ export default function CameraSidebar({
   });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const fillSamplePath = () => {
+    setForm((prev) => ({
+      ...prev,
+      source: SAMPLE_VIDEO_PATH,
+      camera_id: prev.camera_id || "cam-video",
+      name: prev.name || "Demo Video Stream",
+    }));
+
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(SAMPLE_VIDEO_PATH).catch(() => {});
+    }
+
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,13 +86,33 @@ export default function CameraSidebar({
             onChange={(e) => setForm({ ...form, name: e.target.value })}
             required
           />
-          <input
-            className="bg-panel2 rounded-md px-3 py-2 text-sm outline-none focus:ring-1 ring-accent"
-            placeholder="Source: rtsp://…  /  video.mp4  /  0"
-            value={form.source}
-            onChange={(e) => setForm({ ...form, source: e.target.value })}
-            required
-          />
+          <div className="flex flex-col gap-1">
+            <div className="relative flex items-center">
+              <input
+                className="bg-panel2 rounded-md pl-3 pr-20 py-2 text-sm outline-none focus:ring-1 ring-accent w-full text-white/90 placeholder:text-white/30"
+                placeholder="Source: rtsp://… / video.mp4 / 0"
+                value={form.source}
+                onChange={(e) => setForm({ ...form, source: e.target.value })}
+                required
+              />
+              <button
+                type="button"
+                onClick={fillSamplePath}
+                className="absolute right-1.5 px-2 py-1 text-[11px] font-semibold bg-accent/20 hover:bg-accent text-accent hover:text-white rounded transition-all cursor-pointer"
+                title="Fill source with /Users/parthspalav/Downloads/video.mp4"
+              >
+                {copied ? "Copied! ✓" : "Fill Path"}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={fillSamplePath}
+              className="text-[11px] text-accent/80 hover:text-accent hover:underline flex items-center justify-between px-1 cursor-pointer"
+            >
+              <span>📋 Use Sample: video.mp4</span>
+              {copied && <span className="text-green-400 font-semibold">Filled & Copied to clipboard!</span>}
+            </button>
+          </div>
 
           <div className="mt-1">
             <span className="text-xs uppercase tracking-wide text-white/50">

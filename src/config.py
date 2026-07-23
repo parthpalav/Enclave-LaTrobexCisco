@@ -5,8 +5,8 @@ from typing import List
 
 @dataclass
 class DetectionConfig:
-    model_name: str = "yolov8s.pt"
-    conf_threshold: float = 0.3
+    model_name: str = "yolov8m.pt"
+    conf_threshold: float = 0.15
     classes: List[int] = field(default_factory=lambda: [0])
     cadence: int = 1
     tracker_config: str = "bytetrack.yaml"

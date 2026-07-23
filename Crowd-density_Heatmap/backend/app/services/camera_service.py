@@ -36,6 +36,8 @@ class CameraManager:
         self, camera_id: str, source: str, crowd_thresholds: dict | None = None
     ) -> CameraPipeline:
         with self._lock:
+            get_settings.cache_clear()
+            self.settings = Settings()
             if camera_id in self._pipelines:
                 # Idempotent: restart if the same id is re-added.
                 self._pipelines[camera_id].stop()

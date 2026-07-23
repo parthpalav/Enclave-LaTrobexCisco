@@ -58,24 +58,32 @@ class Settings(BaseSettings):
     # Detection model (YOLO)
     # ------------------------------------------------------------------ #
     yolo_model: str = Field(
-        default="yolo11n.pt",
-        description="Primary model weights (YOLOv11). Downloaded on first run.",
+        default="yolo11m.pt",
+        description="Primary model weights (YOLOv11 Medium for high accuracy).",
     )
     yolo_fallback_model: str = Field(
-        default="yolov8n.pt",
+        default="yolov8m.pt",
         description="Fallback weights if the primary fails to load.",
     )
     yolo_device: str = Field(
         default="auto",
         description="'auto' | 'cpu' | 'cuda' | 'cuda:0' — auto detects CUDA.",
     )
-    yolo_confidence: float = Field(default=0.30, ge=0.0, le=1.0)
-    yolo_iou: float = Field(default=0.45, ge=0.0, le=1.0)
-    yolo_imgsz: int = Field(default=640)
+    yolo_confidence: float = Field(
+        default=0.08,
+        ge=0.0,
+        le=1.0,
+        description="Low confidence threshold to detect small, distant, or occluded crowd members.",
+    )
+    yolo_iou: float = Field(default=0.55, ge=0.0, le=1.0)
+    yolo_imgsz: int = Field(
+        default=1024,
+        description="Higher inference resolution (1024px) for detecting distant crowd faces/bodies.",
+    )
     person_class_id: int = Field(default=0, description="COCO class id for 'person'.")
     yolo_max_det: int = Field(
-        default=300,
-        description="Max detections per frame. Raise for very dense crowds.",
+        default=1000,
+        description="Max detections per frame. High cap for dense crowds.",
     )
     yolo_half_precision: bool = Field(
         default=False, description="Use FP16 on CUDA for throughput."
@@ -174,13 +182,13 @@ class Settings(BaseSettings):
     # Crowd-level classification (by people count)
     # ------------------------------------------------------------------ #
     crowd_moderate_threshold: int = Field(
-        default=5, description="People count at/above which the scene is 'Moderate'."
+        default=3, description="People count at/above which the scene is 'Moderate'."
     )
     crowd_crowded_threshold: int = Field(
-        default=10, description="People count at/above which the scene is 'Crowded'."
+        default=6, description="People count at/above which the scene is 'Crowded'."
     )
     crowd_overcrowded_threshold: int = Field(
-        default=20,
+        default=12,
         description="People count at/above which the scene is 'Overcrowded'.",
     )
 
@@ -188,7 +196,7 @@ class Settings(BaseSettings):
     # Alerts
     # ------------------------------------------------------------------ #
     alert_people_threshold: int = Field(
-        default=50, description="People count that triggers a crowd alert."
+        default=6, description="People count that triggers a crowd alert."
     )
     alert_density_threshold: float = Field(
         default=0.75, ge=0.0, le=1.0, description="Max density that triggers an alert."

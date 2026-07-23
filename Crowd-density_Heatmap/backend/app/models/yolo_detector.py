@@ -124,8 +124,13 @@ class YoloDetector:
         return self._to_detections(results[0])
 
     def track(self, frame) -> list[Detection]:
-        """Detect + track people with ByteTrack, persisting state per instance."""
-        results = self._model.track(
+        """Detect + track people with maximum recall for dense crowds.
+
+        Uses predict() for full detection recall (preserving all crowd members down to
+        self.confidence) and matches ByteTrack track IDs where available.
+        """
+        # 1. Run prediction for complete recall (catches 40-65+ crowd members)
+        results_pred = self._model.predict(
             frame,
             conf=self.confidence,
             iou=self.iou,
@@ -134,8 +139,47 @@ class YoloDetector:
             device=self.device,
             half=self.half,
             max_det=self.max_det,
-            persist=True,
-            tracker=self.tracker_config,
             verbose=False,
         )
-        return self._to_detections(results[0])
+        detections = self._to_detections(results_pred[0])
+
+        # 2. Match ByteTrack IDs to detections where available
+        try:
+            results_track = self._model.track(
+                frame,
+                conf=self.confidence,
+                iou=self.iou,
+                imgsz=self.imgsz,
+                classes=[self.person_class_id],
+                device=self.device,
+                half=self.half,
+                max_det=self.max_det,
+                persist=True,
+                tracker=self.tracker_config,
+                verbose=False,
+            )
+            tracked = self._to_detections(results_track[0])
+            for d in detections:
+                best_iou = 0.0
+                best_tid = None
+                for t in tracked:
+                    if t.track_id is None:
+                        continue
+                    xi1 = max(d.x1, t.x1)
+                    yi1 = max(d.y1, t.y1)
+                    xi2 = min(d.x2, t.x2)
+                    yi2 = min(d.y2, t.y2)
+                    inter = max(0.0, xi2 - xi1) * max(0.0, yi2 - yi1)
+                    area_d = (d.x2 - d.x1) * (d.y2 - d.y1)
+                    area_t = (t.x2 - t.x1) * (t.y2 - t.y1)
+                    union = area_d + area_t - inter
+                    iou = inter / max(1e-6, union)
+                    if iou > best_iou and iou > 0.3:
+                        best_iou = iou
+                        best_tid = t.track_id
+                if best_tid is not None:
+                    d.track_id = best_tid
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Tracking refinement skipped: %s", exc)
+
+        return detections

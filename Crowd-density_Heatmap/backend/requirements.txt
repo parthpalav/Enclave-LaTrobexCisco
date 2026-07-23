@@ -9,11 +9,10 @@ websockets==14.1
 # ---- AI / CV ----
 ultralytics==8.3.55
 # Install a CUDA build of torch separately for GPU (see docs/Deployment.md).
-torch==2.5.1
-torchvision==0.20.1
+torch>=2.5.1
+torchvision>=0.20.1
 opencv-python-headless==4.10.0.84
-# numpy pinned <2.0 because Ultralytics requires numpy<2.0.0 on macOS (darwin).
-numpy==1.26.4
+numpy>=1.26.4
 scipy==1.14.1
 
 # ---- Database / cache ----

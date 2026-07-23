@@ -9,8 +9,8 @@ input:
   source: "data/sample_crowd.mp4"
 
 detection:
-  model_name: "yolov8s.pt"
-  conf_threshold: 0.3
+  model_name: "yolov8m.pt"
+  conf_threshold: 0.15
   classes: [0]  # 0 is 'person' in COCO dataset
   cadence: 1
   tracker_config: "bytetrack.yaml"
